@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AI 주식 자동매매 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f4f0;--surface:#ffffff;--surface2:#f9f8f4;
+  --border:#e0dfd8;--border2:#d3d1c7;
+  --text:#2c2c2a;--text2:#5f5e5a;--text3:#888780;
+  --green:#27500A;--green-bg:#EAF3DE;
+  --red:#A32D2D;  --red-bg:#FCEBEB;
+  --blue:#185FA5; --blue-bg:#E6F1FB;
+  --amber:#854F0B;--amber-bg:#FAEEDA;
+  --purple:#3C3489;--purple-bg:#EEEDFE;
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 1px 3px rgba(0,0,0,.06);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Pretendard,sans-serif;
+     background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+
+/* ── 레이아웃 ── */
+.header{background:var(--surface);border-bottom:1px solid var(--border);
+        padding:0 24px;height:56px;display:flex;align-items:center;
+        justify-content:space-between;position:sticky;top:0;z-index:100}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo{font-size:16px;font-weight:500;color:var(--text)}
+.mode-badge{font-size:11px;padding:3px 8px;border-radius:99px;font-weight:500;
+            background:var(--amber-bg);color:var(--amber)}
+.header-time{font-size:12px;color:var(--text3)}
+.container{max-width:1280px;margin:0 auto;padding:24px}
+
+/* ── KPI 카드 ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.kpi-card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);
+          padding:18px 20px;box-shadow:var(--shadow)}
+.kpi-label{font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.kpi-value{font-size:26px;font-weight:500;color:var(--text)}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:4px}
+.kpi-value.pos{color:var(--green)}
+.kpi-value.neg{color:var(--red)}
+
+/* ── 그리드 ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);
+      padding:20px;box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:16px;
+            display:flex;align-items:center;gap:8px}
+.card-title .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-green{background:#639922}.dot-blue{background:#378ADD}
+.dot-amber{background:#EF9F27}.dot-purple{background:#7F77DD}
+
+/* ── 테이블 ── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:500;color:var(--text3);padding:8px 10px;
+   text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+td{font-size:12px;padding:9px 10px;border-bottom:1px solid var(--border2);
+   color:var(--text2);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--surface2)}
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:99px;
+       font-size:11px;font-weight:500}
+.badge-buy{background:var(--green-bg);color:var(--green)}
+.badge-sell{background:var(--red-bg);color:var(--red)}
+.badge-hold{background:var(--surface2);color:var(--text3)}
+.badge-filled{background:var(--blue-bg);color:var(--blue)}
+.badge-blocked{background:var(--amber-bg);color:var(--amber)}
+
+/* ── AI 로그 ── */
+.ai-item{display:flex;align-items:flex-start;gap:12px;padding:10px 0;
+         border-bottom:1px solid var(--border2)}
+.ai-item:last-child{border-bottom:none}
+.ai-ticker{font-weight:500;font-size:13px;min-width:60px}
+.ai-reason{font-size:12px;color:var(--text2);flex:1}
+.ai-conf{font-size:12px;font-weight:500;min-width:40px;text-align:right}
+
+/* ── 종목 바 ── */
+.ticker-bar{display:flex;flex-direction:column;gap:8px}
+.ticker-row{display:flex;align-items:center;gap:10px}
+.ticker-name{font-size:12px;min-width:64px;color:var(--text2)}
+.bar-wrap{flex:1;background:var(--surface2);border-radius:4px;height:8px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:var(--blue-bg);
+          background:linear-gradient(90deg,#378ADD,#185FA5);transition:width .6s}
+.ticker-cnt{font-size:11px;color:var(--text3);min-width:28px;text-align:right}
+
+/* ── 로딩 ── */
+.loading{color:var(--text3);font-size:13px;text-align:center;padding:24px}
+
+/* ── 반응형 ── */
+@media(max-width:900px){
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <span class="logo">🤖 AI 주식 자동매매</span>
+    <span class="mode-badge">📄 PAPER</span>
+  </div>
+  <span class="header-time" id="clock">--:--:--</span>
+</div>
+
+<div class="container">
+
+  <!-- KPI 카드 -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">실현 손익</div>
+      <div class="kpi-value" id="kpi-pnl">—</div>
+      <div class="kpi-sub">누적 (원)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">총 주문</div>
+      <div class="kpi-value" id="kpi-total">—</div>
+      <div class="kpi-sub" id="kpi-today">오늘 — 건</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">체결 주문</div>
+      <div class="kpi-value" id="kpi-filled">—</div>
+      <div class="kpi-sub" id="kpi-blocked">차단 — 건</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">매수 / 매도 금액</div>
+      <div class="kpi-value" id="kpi-buy">—</div>
+      <div class="kpi-sub" id="kpi-sell">매도 —</div>
+    </div>
+  </div>
+
+  <!-- 차트 행 -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="dot dot-blue"></span>일별 손익</div>
+      <canvas id="pnl-chart" height="160"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot dot-green"></span>종목별 거래 횟수</div>
+      <div class="ticker-bar" id="ticker-bar"><p class="loading">로딩 중...</p></div>
+    </div>
+  </div>
+
+  <!-- AI 로그 + 주문 내역 -->
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title"><span class="dot dot-amber"></span>최근 주문 내역</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>시각</th><th>종목</th><th>구분</th><th>수량</th><th>가격</th><th>상태</th><th>판단 근거</th></tr>
+          </thead>
+          <tbody id="orders-tbody"><tr><td colspan="7" class="loading">로딩 중...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot dot-purple"></span>AI 판단 로그</div>
+      <div id="ai-log"><p class="loading">로딩 중...</p></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── 시계 ──
+function tick(){
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('ko-KR')
+}
+tick(); setInterval(tick,1000)
+
+// ── KPI 로드 ──
+async function loadSummary(){
+  const d = await fetch('/api/summary').then(r=>r.json())
+  const pnl = d.realized_pnl
+  const el  = document.getElementById('kpi-pnl')
+  el.textContent = (pnl>=0?'+':'')+pnl.toLocaleString()+'원'
+  el.className   = 'kpi-value '+(pnl>=0?'pos':'neg')
+  document.getElementById('kpi-total').textContent   = d.total_orders.toLocaleString()
+  document.getElementById('kpi-today').textContent   = `오늘 ${d.today_count}건`
+  document.getElementById('kpi-filled').textContent  = d.filled_orders.toLocaleString()
+  document.getElementById('kpi-blocked').textContent = `차단 ${d.blocked_orders}건`
+  document.getElementById('kpi-buy').textContent     = (d.buy_amount/10000).toFixed(0)+'만원'
+  document.getElementById('kpi-sell').textContent    = '매도 '+(d.sell_amount/10000).toFixed(0)+'만원'
+}
+
+// ── 일별 손익 차트 ──
+let pnlChart = null
+async function loadPnlChart(){
+  const data = await fetch('/api/daily_pnl').then(r=>r.json())
+  const labels = data.map(d=>d.date)
+  const values = data.map(d=>d.pnl)
+  const colors = values.map(v=>v>=0?'#27500A':'#A32D2D')
+  const bgColors= values.map(v=>v>=0?'#EAF3DE':'#FCEBEB')
+
+  if(pnlChart) pnlChart.destroy()
+  const ctx = document.getElementById('pnl-chart').getContext('2d')
+  pnlChart = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:'일별 손익 (원)',
+        data:values,
+        backgroundColor:bgColors,
+        borderColor:colors,
+        borderWidth:1.5,
+        borderRadius:4,
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>(c.parsed.y>=0?'+':'')+c.parsed.y.toLocaleString()+'원'}}},
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:10},maxTicksLimit:10}},
+        y:{grid:{color:'#f1efe8'},ticks:{font:{size:10},
+            callback:v=>(v/10000).toFixed(0)+'만'}}
+      }
+    }
+  })
+}
+
+// ── 종목 바 ──
+async function loadTickerBar(){
+  const data = await fetch('/api/ticker_stats').then(r=>r.json())
+  const max  = Math.max(...data.map(d=>d.total),1)
+  const nameMap = {'005930':'삼성전자','000660':'SK하이닉스','035420':'NAVER',
+                   '051910':'LG화학','006400':'삼성SDI'}
+  const html = data.map(d=>`
+    <div class="ticker-row">
+      <span class="ticker-name">${nameMap[d.ticker]||d.ticker}</span>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${(d.total/max*100).toFixed(0)}%"></div></div>
+      <span class="ticker-cnt">${d.total}건</span>
+    </div>`).join('')
+  document.getElementById('ticker-bar').innerHTML = html
+}
+
+// ── 주문 내역 ──
+async function loadOrders(){
+  const data = await fetch('/api/orders').then(r=>r.json())
+  const nameMap = {'005930':'삼성전자','000660':'SK하이닉스','035420':'NAVER',
+                   '051910':'LG화학','006400':'삼성SDI'}
+  const rows = data.slice(0,30).map(o=>{
+    const t    = new Date(o.timestamp)
+    const time = `${t.getMonth()+1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}`
+    const typeBadge = o.order_type==='BUY'
+      ? '<span class="badge badge-buy">매수</span>'
+      : '<span class="badge badge-sell">매도</span>'
+    const statusBadge = o.status.includes('FILLED')
+      ? '<span class="badge badge-filled">체결</span>'
+      : '<span class="badge badge-blocked">차단</span>'
+    return `<tr>
+      <td>${time}</td>
+      <td><b>${o.ticker}</b><br><span style="color:var(--text3);font-size:10px">${nameMap[o.ticker]||''}</span></td>
+      <td>${typeBadge}</td>
+      <td>${o.qty}주</td>
+      <td>${(o.price||0).toLocaleString()}원</td>
+      <td>${statusBadge}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${o.reason||''}">${(o.reason||'').substring(0,30)}${(o.reason||'').length>30?'…':''}</td>
+    </tr>`
+  }).join('')
+  document.getElementById('orders-tbody').innerHTML = rows || '<tr><td colspan="7" class="loading">데이터 없음</td></tr>'
+}
+
+// ── AI 판단 로그 ──
+async function loadAiLog(){
+  const data = await fetch('/api/ai_log').then(r=>r.json())
+  const iconMap = {BUY:'🟢',SELL:'🔴',HOLD:'🟡'}
+  const colorMap= {BUY:'var(--green)',SELL:'var(--red)',HOLD:'var(--text3)'}
+  const html = data.map(d=>`
+    <div class="ai-item">
+      <span style="font-size:16px">${iconMap[d.action]||'⚪'}</span>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="ai-ticker">${d.ticker}</span>
+          <span style="font-size:11px;font-weight:500;color:${colorMap[d.action]}">${d.action}</span>
+        </div>
+        <div class="ai-reason">${d.reason}</div>
+      </div>
+      <div class="ai-conf" style="color:${d.confidence>=70?'var(--green)':'var(--text3)'}">${d.confidence}점</div>
+    </div>`).join('')
+  document.getElementById('ai-log').innerHTML = html || '<p class="loading">판단 기록 없음</p>'
+}
+
+// ── 전체 로드 ──
+async function loadAll(){
+  await Promise.all([loadSummary(),loadPnlChart(),loadTickerBar(),loadOrders(),loadAiLog()])
+}
+
+loadAll()
+setInterval(loadAll, 15000)   // 15초마다 자동 갱신
+</script>
+</body>
+</html>
