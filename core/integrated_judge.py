@@ -178,8 +178,8 @@ class IntegratedJudge:
             return json.loads(re.sub(r"```json|```", "", raw).strip())
         except Exception as e:
             logger.error("통합 판단 Claude 오류 [{}]: {}", snap.ticker, e)
-            return {"action":"HOLD","confidence":0,"reason":"API 오류","
-                    target_price":snap.current_price,"stop_loss":int(snap.current_price*0.97),"position_size":"SMALL"}
+            return {"action":"HOLD","confidence":0,"reason":"API 오류",
+                    "target_price":snap.current_price,"stop_loss":int(snap.current_price*0.97),"position_size":"SMALL"}
 
     @staticmethod
     def _build_prompt(snap: StockSnapshot, news_v: NewsVerdict) -> str:
