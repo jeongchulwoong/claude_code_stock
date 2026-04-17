@@ -1,0 +1,40 @@
+# 환경 변수 (API 키, 계좌번호 절대 커밋 금지)
+.env
+
+# 데이터베이스
+db/*.db
+db/*.sqlite
+
+# 로그
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# 가상환경
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 키움 API 캐시
+*.log

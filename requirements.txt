@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────
+# requirements.txt
+# ※ PyQt5는 Windows 32bit 환경에서만 설치
+#    pip install PyQt5 (Windows only)
+# ─────────────────────────────────────────────
+
+# AI 판단 엔진
+anthropic>=0.25.0
+
+# 데이터 처리
+pandas>=2.0.0
+numpy>=1.26.0
+
+# 해외주식 데이터 (Phase 2)
+# finnhub-python>=2.4.0
+# alpha_vantage>=2.3.1
+# yfinance>=0.2.40
+
+# 알림
+requests>=2.31.0
+# python-telegram-bot>=21.0  # 비동기 버전 (Phase 5에서 전환)
+
+# DB / 로그 (표준 라이브러리 + 추가)
+loguru>=0.7.0
+
+# 환경 변수
+python-dotenv>=1.0.0
+
+# 스케줄러 (Phase 4)
+# APScheduler>=3.10.0
+
+# 기술지표 (ta-lib 대안 — 순수 Python)
+# ta>=0.11.0   # 필요 시 활성화
