@@ -2,9 +2,12 @@
 config.py — 전역 설정 파일
 ※ 리스크 파라미터는 이 파일에서만 수정한다.
 ※ API 키·계좌번호는 .env에서만 관리한다.
+※ 런타임 설정(감시 종목 등)은 user_config.json 으로 오버라이드 가능하다.
 """
 
+import json
 import os
+import pathlib
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,20 +35,22 @@ RISK_CONFIG = {
 # AI 판단 엔진 설정
 # ──────────────────────────────────────────────
 AI_CONFIG = {
-    "model":       "claude-sonnet-4-20250514",
-    "max_tokens":  1024,
-    "temperature": 0,           # 재현성을 위해 0 고정
+    "model":       "gemini-2.5-flash",
+    "max_tokens":  2048,
+    "temperature": 0,
 }
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ──────────────────────────────────────────────
 # 키움 API 설정
 # ──────────────────────────────────────────────
 API_CONFIG = {
-    "account_no":    os.getenv("KIWOOM_ACCOUNT_NO", ""),
-    "login_timeout": 30,        # 로그인 대기 최대 시간 (초)
-    "tr_timeout":    10,        # TR 요청 타임아웃 (초)
-    "max_reconnect": 3,         # 연결 실패 시 최대 재연결 횟수
+    "account_no":  os.getenv("KIWOOM_ACCOUNT_NO", ""),
+    "appkey":      os.getenv("KIWOOM_APPKEY", ""),
+    "secretkey":   os.getenv("KIWOOM_SECRETKEY", ""),
+    "login_timeout": 30,
+    "tr_timeout":    10,
+    "max_reconnect": 3,
 }
 
 # ──────────────────────────────────────────────
@@ -69,22 +74,45 @@ TELEGRAM_CONFIG = {
 # ──────────────────────────────────────────────
 # DB / 로그 경로
 # ──────────────────────────────────────────────
-import pathlib
 BASE_DIR = pathlib.Path(__file__).parent
 
 DB_PATH  = BASE_DIR / "db"  / "trade_log.db"
 LOG_DIR  = BASE_DIR / "logs"
+USER_CONFIG_PATH = BASE_DIR / "user_config.json"
 
 DB_PATH.parent.mkdir(exist_ok=True)
 LOG_DIR.mkdir(exist_ok=True)
 
 # ──────────────────────────────────────────────
-# 감시 종목 리스트 (Phase 1 테스트용)
+# 감시 종목 — 이름으로 관리 (티커는 stock_universe 에서 자동 조회)
 # ──────────────────────────────────────────────
-WATCH_LIST = [
-    "005930",   # 삼성전자
-    "000660",   # SK하이닉스
-    "035420",   # NAVER
-    "051910",   # LG화학
-    "006400",   # 삼성SDI
+_DEFAULT_WATCH_NAMES = [
+    "삼성전자", "SK하이닉스", "NAVER", "LG화학", "삼성SDI",
+    "현대차", "카카오", "셀트리온", "Apple", "NVIDIA",
 ]
+
+def _load_user_config() -> dict:
+    if USER_CONFIG_PATH.exists():
+        try:
+            return json.loads(USER_CONFIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def _save_user_config(data: dict) -> None:
+    USER_CONFIG_PATH.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+def get_watch_names() -> list[str]:
+    return _load_user_config().get("watch_names", _DEFAULT_WATCH_NAMES)
+
+def get_risk_config() -> dict:
+    overrides = _load_user_config().get("risk_config", {})
+    return {**RISK_CONFIG, **overrides}
+
+def get_scan_interval() -> int:
+    return _load_user_config().get("scan_interval_minutes", SCHEDULE_CONFIG["scan_interval_minutes"])
+
+# 하위 호환 — 기존 코드가 WATCH_LIST 를 직접 참조할 경우
+WATCH_LIST = get_watch_names()

@@ -83,9 +83,11 @@ class DBManager:
                             try:
                                 con.execute(stmt)
                             except sqlite3.OperationalError as e:
-                                # "column already exists" 등 무시 가능한 오류
-                                if "already exists" in str(e) or "duplicate column" in str(e).lower():
-                                    logger.debug("마이그레이션 skip (이미 존재): {}", e)
+                                err = str(e).lower()
+                                if ("already exists" in err
+                                        or "duplicate column" in err
+                                        or "no such table" in err):
+                                    logger.debug("마이그레이션 skip: {}", e)
                                 else:
                                     raise
                     con.execute(

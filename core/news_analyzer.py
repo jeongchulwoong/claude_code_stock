@@ -26,7 +26,7 @@ from typing import Literal, Optional
 
 from loguru import logger
 
-from config import AI_CONFIG, ANTHROPIC_API_KEY
+from config import AI_CONFIG, GEMINI_API_KEY
 
 
 # ── 데이터 구조 ───────────────────────────────
@@ -316,10 +316,10 @@ class NewsAnalyzer:
 }"""
 
     def __init__(self) -> None:
-        self._mock = not bool(ANTHROPIC_API_KEY)
+        self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            import anthropic
-            self._client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            from google import genai
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
 
     def analyze(
         self,
@@ -341,18 +341,18 @@ class NewsAnalyzer:
 
         prompt = self._build_prompt(ticker, ticker_name, news_items)
         try:
-            import anthropic
-            resp = self._client.messages.create(
-                model      = AI_CONFIG["model"],
-                max_tokens = 600,
-                temperature= 0,
-                system     = self._SYSTEM,
-                messages   = [{"role": "user", "content": prompt}],
+            from google.genai import types as gtypes
+            resp = self._client.models.generate_content(
+                model    = AI_CONFIG["model"],
+                contents = self._SYSTEM + "\n\n" + prompt,
+                config   = gtypes.GenerateContentConfig(
+                    temperature=0, max_output_tokens=600,
+                ),
             )
-            raw  = resp.content[0].text
+            raw  = resp.text
             data = json.loads(re.sub(r"```json|```", "", raw).strip())
         except Exception as e:
-            logger.error("Claude 뉴스 분석 실패 [{}]: {}", ticker, e)
+            logger.error("Gemini 뉴스 분석 실패 [{}]: {}", ticker, e)
             return self._fallback(ticker, ticker_name, news_items)
 
         verdict = NewsVerdict(

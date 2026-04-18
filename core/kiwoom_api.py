@@ -24,13 +24,14 @@ if sys.platform != "win32":
     )
     _WINDOWS = False
 else:
-    _WINDOWS = True
     try:
         from PyQt5.QAxContainer import QAxWidget
         from PyQt5.QtCore import QEventLoop, QTimer
         from PyQt5.QtWidgets import QApplication
-    except ImportError as e:
-        raise ImportError("PyQt5가 설치되지 않았습니다: pip install PyQt5") from e
+        _WINDOWS = True
+    except ImportError:
+        logger.warning("PyQt5 미설치 — MockKiwoomAPI로 대체합니다. (pip install PyQt5)")
+        _WINDOWS = False
 
 
 # ── 커스텀 예외 ───────────────────────────────
@@ -303,6 +304,177 @@ if _WINDOWS:
 
 
 # ─────────────────────────────────────────────
+# KiwoomRestAPI — REST API 기반 (모의/실전 공통)
+# ─────────────────────────────────────────────
+class KiwoomRestAPI:
+    """
+    키움 REST API (모의투자 / 실전투자) 클라이언트.
+    TRADING_MODE=paper  → mockapi.kiwoom.com  (모의투자)
+    TRADING_MODE=live   → api.kiwoom.com      (실전투자)
+    """
+
+    def __init__(self, paper: bool = True) -> None:
+        from config import API_CONFIG, PAPER_TRADING
+        self._appkey    = API_CONFIG["appkey"]
+        self._secretkey = API_CONFIG["secretkey"]
+        self._account   = API_CONFIG["account_no"]
+        self._paper     = paper
+        self._base      = "https://mockapi.kiwoom.com" if paper else "https://api.kiwoom.com"
+        self._token: str = ""
+        self._connected = False
+        logger.info("KiwoomRestAPI 초기화 | {}", "모의투자" if paper else "실전투자")
+
+    def login(self) -> bool:
+        import requests
+        try:
+            r = requests.post(
+                f"{self._base}/oauth2/token",
+                json={
+                    "grant_type": "client_credentials",
+                    "appkey":     self._appkey,
+                    "secretkey":  self._secretkey,
+                },
+                timeout=10,
+            )
+            body = r.json()
+            if body.get("return_code") != 0:
+                logger.error("토큰 발급 실패: {}", body.get("return_msg"))
+                return False
+            self._token     = body["token"]
+            self._connected = True
+            logger.info("키움 REST 로그인 성공 | {}", "모의" if self._paper else "실전")
+            return True
+        except Exception as e:
+            logger.error("키움 REST 로그인 오류: {}", e)
+            return False
+
+    def _headers(self, tr_id: str) -> dict:
+        return {
+            "Content-Type":  "application/json; charset=UTF-8",
+            "authorization": f"Bearer {self._token}",
+            "appkey":        self._appkey,
+            "appsecret":     self._secretkey,
+            "tr_id":         tr_id,
+        }
+
+    def get_connection_state(self) -> bool:
+        return self._connected
+
+    def get_account_list(self) -> list[str]:
+        return [self._account]
+
+    def get_login_info(self, tag: str) -> str:
+        return self._account if tag == "ACCNO" else ""
+
+    def get_current_price(self, ticker: str) -> dict:
+        """종목 현재가 조회"""
+        import requests
+        # ticker가 .KS/.KQ 포함이면 제거
+        code = ticker.replace(".KS", "").replace(".KQ", "")
+        try:
+            r = requests.get(
+                f"{self._base}/uapi/domestic-stock/v1/quotations/inquire-price",
+                headers=self._headers("FHKST01010100"),
+                params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+                timeout=5,
+            )
+            return r.json().get("output", {})
+        except Exception as e:
+            logger.error("현재가 조회 오류 [{}]: {}", ticker, e)
+            return {}
+
+    def send_order(
+        self, rq_name, scr_no, acc_no, order_type: int,
+        code: str, qty: int, price: int, hoga_gb: str, org_order_no: str = ""
+    ) -> int:
+        """
+        주식 주문 전송
+        order_type: 1=매수, 2=매도
+        hoga_gb: "00"=지정가, "03"=시장가
+        """
+        import requests
+        ticker = code.replace(".KS", "").replace(".KQ", "")
+        # TR ID: 모의(V), 실전(T) / 매수(0802U), 매도(0801U)
+        prefix = "VT" if self._paper else "TT"
+        tr_id  = f"{prefix}TC0802U" if order_type == 1 else f"{prefix}TC0801U"
+        # 호가 구분: 00→지정가(00), 03→시장가(01)
+        ord_dvsn = "01" if hoga_gb == "03" else "00"
+        body = {
+            "CANO":         self._account[:8],
+            "ACNT_PRDT_CD": self._account[8:] if len(self._account) > 8 else "01",
+            "PDNO":         ticker,
+            "ORD_DVSN":     ord_dvsn,
+            "ORD_QTY":      str(qty),
+            "ORD_UNPR":     str(price),
+        }
+        action = "매수" if order_type == 1 else "매도"
+        try:
+            r = requests.post(
+                f"{self._base}/uapi/domestic-stock/v1/trading/order-cash",
+                headers=self._headers(tr_id),
+                json=body,
+                timeout=10,
+            )
+            resp = r.json()
+            if resp.get("rt_cd") == "0":
+                logger.info("주문 성공 | {} {} {}주 {}원", action, ticker, qty, price)
+                return 0
+            else:
+                logger.error("주문 실패 | {} {} | {}", action, ticker, resp.get("msg1", ""))
+                return -1
+        except Exception as e:
+            logger.error("주문 오류 [{}]: {}", ticker, e)
+            return -1
+
+    def get_balance(self) -> dict:
+        """잔고 조회"""
+        import requests
+        tr_id = "VTTC8434R" if self._paper else "TTTC8434R"
+        try:
+            r = requests.get(
+                f"{self._base}/uapi/domestic-stock/v1/trading/inquire-balance",
+                headers=self._headers(tr_id),
+                params={
+                    "CANO":         self._account[:8],
+                    "ACNT_PRDT_CD": self._account[8:] if len(self._account) > 8 else "01",
+                    "AFHR_FLPR_YN": "N", "OFL_YN": "N", "INQR_DVSN": "02",
+                    "UNPR_DVSN": "01", "FUND_STTL_ICLD_YN": "N",
+                    "FNCG_AMT_AUTO_RDPT_YN": "N", "PRCS_DVSN": "00", "CTX_AREA_FK100": "",
+                    "CTX_AREA_NK100": "",
+                },
+                timeout=10,
+            )
+            return r.json()
+        except Exception as e:
+            logger.error("잔고 조회 오류: {}", e)
+            return {}
+
+    # 하위 호환용 stub
+    def set_input_value(self, id_: str, value: str) -> None:
+        pass
+
+    def comm_rq_data(self, rq_name, tr_code, prev_next, scr_no, callback) -> None:
+        pass
+
+    def set_real_reg(self, scr_no, code_list, fid_list, opt_type="0") -> None:
+        pass
+
+    def get_comm_data(self, tr_code, rq_name, index, item) -> str:
+        return "0"
+
+    def get_chejan_data(self, fid) -> str:
+        return "0"
+
+    def disconnect(self) -> None:
+        self._connected = False
+        logger.info("키움 REST 연결 해제")
+
+    def _check_connected(self) -> None:
+        if not self._connected:
+            raise KiwoomNotConnectedError("KiwoomRestAPI 미연결 — login() 먼저")
+
+
+# ─────────────────────────────────────────────
 # MockKiwoomAPI — 비-Windows / 테스트 / 페이퍼 트레이딩용
 # ─────────────────────────────────────────────
 class MockKiwoomAPI:
@@ -366,10 +538,14 @@ class MockKiwoomAPI:
 # ── 팩토리 함수 ──────────────────────────────
 def get_kiwoom_api(paper_trading: bool = True):
     """
-    운영 모드에 따라 실제 또는 Mock API 인스턴스를 반환한다.
-    paper_trading=True → MockKiwoomAPI
-    paper_trading=False + Windows → KiwoomAPI
+    우선순위:
+    1. appkey/secretkey 있으면 → KiwoomRestAPI (모의 or 실전)
+    2. Windows + PyQt5 있으면  → KiwoomAPI (OpenAPI+)
+    3. 나머지                  → MockKiwoomAPI
     """
-    if paper_trading or not _WINDOWS:
-        return MockKiwoomAPI()
-    return KiwoomAPI()
+    from config import API_CONFIG
+    if API_CONFIG.get("appkey"):
+        return KiwoomRestAPI(paper=paper_trading)
+    if not paper_trading and _WINDOWS:
+        return KiwoomAPI()
+    return MockKiwoomAPI()

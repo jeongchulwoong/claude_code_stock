@@ -23,7 +23,6 @@ from dashboard.db_reader import (
     get_orders,
     get_summary_stats,
     get_ticker_stats,
-    seed_demo_data,
 )
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -89,10 +88,16 @@ def api_screener():
                 "SELECT ticker, name, price, score, reasons, screened_at "
                 "FROM screener_results ORDER BY screened_at DESC, score DESC LIMIT 20"
             ).fetchall()
-        import json
+        def parse_reasons(raw):
+            if not raw:
+                return []
+            try:
+                return json.loads(raw)
+            except Exception:
+                return [s.strip() for s in raw.split(",") if s.strip()]
         return jsonify([{
             "ticker": r[0], "name": r[1], "price": r[2],
-            "score": r[3], "reasons": json.loads(r[4] or '[]'),
+            "score": r[3], "reasons": parse_reasons(r[4]),
             "screened_at": r[5]
         } for r in rows])
     except Exception:
@@ -122,10 +127,17 @@ def api_foreign_signals():
 @app.route("/api/run_screener")
 def api_run_screener():
     try:
-        from core.screener import MarketScreener
-        screener = MarketScreener()
-        result   = screener.run(use_mock=True, min_score=20.0)
-        return jsonify({"candidates": len(result.candidates), "scanned": result.total_scanned})
+        import subprocess, sys
+        script = str(Path(__file__).parent.parent / "scripts" / "fetch_real_stocks.py")
+        proc = subprocess.run(
+            [sys.executable, script],
+            capture_output=True, text=True, timeout=300
+        )
+        # count saved rows
+        with sqlite3.connect(DB_PATH) as con:
+            cnt = con.execute("SELECT COUNT(*) FROM screener_results").fetchone()[0]
+        return jsonify({"scanned": cnt, "ok": proc.returncode == 0,
+                        "stderr": proc.stderr[-500:] if proc.returncode != 0 else ""})
     except Exception as e:
         return jsonify({"error": str(e)})
 
@@ -162,10 +174,47 @@ def api_alerts():
 from config import DB_PATH as DB_PATH
 import sqlite3
 
+# ── Config API ────────────────────────────────
+from flask import request
+
+@app.route("/api/config", methods=["GET"])
+def api_config_get():
+    import config as cfg
+    from stock_universe import ALL
+    return jsonify({
+        "watch_names":   cfg.get_watch_names(),
+        "risk_config":   cfg.get_risk_config(),
+        "scan_interval": cfg.get_scan_interval(),
+        "all_stocks":    list(ALL.keys()),
+    })
+
+@app.route("/api/config", methods=["POST"])
+def api_config_post():
+    import config as cfg
+    data = request.get_json(force=True)
+    current = cfg._load_user_config()
+
+    if "watch_names" in data:
+        from stock_universe import ALL
+        valid = [n for n in data["watch_names"] if n in ALL]
+        current["watch_names"] = valid
+
+    if "risk_config" in data:
+        allowed = {"max_positions","max_invest_per_trade","stop_loss_pct",
+                   "take_profit_pct","daily_loss_limit","min_confidence"}
+        patch = {k: v for k, v in data["risk_config"].items() if k in allowed}
+        current.setdefault("risk_config", {}).update(patch)
+
+    if "scan_interval_minutes" in data:
+        v = int(data["scan_interval_minutes"])
+        current["scan_interval_minutes"] = max(5, min(v, 1440))
+
+    cfg._save_user_config(current)
+    return jsonify({"ok": True, "saved": current})
+
 # ── 진입점 ────────────────────────────────────
 
 if __name__ == "__main__":
-    seed_demo_data()   # DB가 비어있으면 데모 데이터 삽입
     print("\n" + "="*50)
     print("  🤖 AI 주식 모니터링 대시보드")
     print("  http://localhost:5000")

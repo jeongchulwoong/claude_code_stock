@@ -205,9 +205,13 @@ class OrderManager:
                     qty         INTEGER,
                     price       INTEGER,
                     status      TEXT,
-                    reason      TEXT
+                    reason      TEXT,
+                    strategy    TEXT DEFAULT ''
                 )
             """)
+            con.execute("CREATE INDEX IF NOT EXISTS idx_orders_ticker    ON orders(ticker)")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_orders_timestamp ON orders(timestamp)")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status)")
         logger.debug("orders 테이블 초기화 완료")
 
     def _save_order(

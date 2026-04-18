@@ -28,7 +28,6 @@ from dashboard.db_reader import (
     get_orders,
     get_summary_stats,
     get_ticker_stats,
-    seed_demo_data,
 )
 
 app    = Flask(__name__)
@@ -381,18 +380,6 @@ def _broadcast_loop():
             sio.emit("ticker_stats", get_ticker_stats())
             sio.emit("orders",       get_orders(limit=50))
             sio.emit("ai_log",       get_ai_judge_log())
-            # 데모: 가상 이벤트 emit
-            import random
-            tickers = ["005930","000660","035420","051910"]
-            events  = [
-                ("🟢", "AI 매수 신호 — 신뢰도 {}점".format(random.randint(70,92))),
-                ("🟡", "HOLD — 지표 불명확"),
-                ("⛔", "리스크 체크 — 투자금 조정"),
-                ("✅", "체결 완료 — {}주".format(random.randint(1,10))),
-            ]
-            ticker = random.choice(tickers)
-            icon, msg = random.choice(events)
-            sio.emit("new_event", {"icon": icon, "ticker": ticker, "message": msg})
         except Exception:
             pass
 
@@ -414,7 +401,6 @@ def health():
 # ── 진입점 ────────────────────────────────────
 
 if __name__ == "__main__":
-    seed_demo_data()
     t = threading.Thread(target=_broadcast_loop, daemon=True)
     t.start()
     print("\n" + "="*55)

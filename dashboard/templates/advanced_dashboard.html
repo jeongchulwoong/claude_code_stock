@@ -94,6 +94,7 @@ tr:hover td{background:#faf9f6}
   <div class="tab" onclick="switchTab('strategies')">🏆 전략 성과</div>
   <div class="tab" onclick="switchTab('orders')">📋 주문 내역</div>
   <div class="tab" onclick="switchTab('foreign')">🌐 해외주식</div>
+  <div class="tab" onclick="switchTab('config')">⚙️ 설정</div>
 </div>
 
 <!-- ① 대시보드 탭 -->
@@ -181,6 +182,42 @@ tr:hover td{background:#faf9f6}
   <div class="g4" id="foreign-cards"></div>
 </div>
 
+<!-- ⑦ 설정 탭 -->
+<div id="tab-config" class="panel">
+  <div class="g2">
+    <!-- 감시 종목 관리 -->
+    <div class="card">
+      <div class="ch">📋 감시 종목 관리</div>
+      <div style="margin-bottom:10px;display:flex;gap:8px">
+        <input id="stock-search" placeholder="종목명 검색..." list="stock-list"
+          style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        <datalist id="stock-list"></datalist>
+        <button onclick="addStock()"
+          style="padding:6px 14px;border-radius:6px;border:1px solid var(--blue);background:var(--bBg);color:var(--blue);cursor:pointer;font-size:12px">추가</button>
+      </div>
+      <div id="watch-list" style="max-height:380px;overflow-y:auto"></div>
+      <div style="margin-top:12px;text-align:right">
+        <button onclick="saveWatchList()"
+          style="padding:7px 20px;border-radius:6px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:12px;font-weight:500">저장</button>
+      </div>
+    </div>
+    <!-- 리스크 설정 -->
+    <div class="card">
+      <div class="ch">⚙️ 리스크 파라미터</div>
+      <div id="risk-form" style="display:flex;flex-direction:column;gap:12px"></div>
+      <div style="margin-top:16px;display:flex;gap:8px;align-items:center">
+        <label style="font-size:11px;color:var(--text2)">스캔 주기(분)</label>
+        <input id="scan-interval" type="number" min="5" max="1440"
+          style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        <div style="flex:1"></div>
+        <button onclick="saveRisk()"
+          style="padding:7px 20px;border-radius:6px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:12px;font-weight:500">저장</button>
+      </div>
+      <div id="config-msg" style="margin-top:10px;font-size:11px;color:var(--green);display:none">저장됐습니다.</div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── 탭 전환 ──
 function switchTab(t){
@@ -191,6 +228,7 @@ function switchTab(t){
   if(t==='orders') loadFullOrders();
   if(t==='portfolio') loadPortfolio();
   if(t==='foreign') loadForeign();
+  if(t==='config') loadConfig();
 }
 
 // ── 시계 ──
@@ -401,6 +439,100 @@ async function loadForeign(){
       </div>`;
     }).join('');
   }catch(e){document.getElementById('foreign-cards').innerHTML='<p style="color:var(--text3)">로드 실패</p>';}
+}
+
+// ── 설정 탭 ──
+let _cfg = {};
+let _watchNames = [];
+
+async function loadConfig() {
+  _cfg = await fetch('/api/config').then(r => r.json());
+  _watchNames = [..._cfg.watch_names];
+
+  // datalist 채우기
+  const dl = document.getElementById('stock-list');
+  dl.innerHTML = _cfg.all_stocks.map(n => `<option value="${n}">`).join('');
+
+  renderWatchList();
+  renderRiskForm();
+  document.getElementById('scan-interval').value = _cfg.scan_interval;
+}
+
+function renderWatchList() {
+  document.getElementById('watch-list').innerHTML = _watchNames.map((name, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border2)">
+      <span style="flex:1;font-size:12px">${name}</span>
+      <button onclick="removeStock(${i})"
+        style="padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:11px;color:var(--red)">삭제</button>
+    </div>`).join('');
+}
+
+function addStock() {
+  const val = document.getElementById('stock-search').value.trim();
+  if (!val || _watchNames.includes(val)) return;
+  if (!_cfg.all_stocks.includes(val)) { alert('목록에 없는 종목입니다.'); return; }
+  _watchNames.push(val);
+  renderWatchList();
+  document.getElementById('stock-search').value = '';
+}
+
+function removeStock(i) {
+  _watchNames.splice(i, 1);
+  renderWatchList();
+}
+
+async function saveWatchList() {
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ watch_names: _watchNames })
+  });
+  showMsg();
+}
+
+const RISK_LABELS = {
+  max_positions:        { label: '최대 동시 보유 종목', type: 'int' },
+  max_invest_per_trade: { label: '1회 최대 투자금 (원)', type: 'int' },
+  stop_loss_pct:        { label: '손절선 (%)', type: 'pct' },
+  take_profit_pct:      { label: '익절선 (%)', type: 'pct' },
+  daily_loss_limit:     { label: '일일 손실 한도 (원)', type: 'int' },
+  min_confidence:       { label: 'AI 최소 신뢰도 (0~100)', type: 'int' },
+};
+
+function renderRiskForm() {
+  const form = document.getElementById('risk-form');
+  form.innerHTML = Object.entries(RISK_LABELS).map(([k, meta]) => {
+    const raw = _cfg.risk_config[k] ?? '';
+    const val = meta.type === 'pct' ? (parseFloat(raw) * 100).toFixed(1) : raw;
+    return `
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="flex:1;font-size:11px;color:var(--text2)">${meta.label}</label>
+        <input id="risk-${k}" value="${val}" type="number" step="${meta.type==='pct'?'0.1':'1'}"
+          style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+      </div>`;
+  }).join('');
+}
+
+async function saveRisk() {
+  const patch = {};
+  for (const [k, meta] of Object.entries(RISK_LABELS)) {
+    const el = document.getElementById(`risk-${k}`);
+    if (!el) continue;
+    patch[k] = meta.type === 'pct' ? parseFloat(el.value) / 100 : parseInt(el.value);
+  }
+  const interval = parseInt(document.getElementById('scan-interval').value);
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ risk_config: patch, scan_interval_minutes: interval })
+  });
+  showMsg();
+}
+
+function showMsg() {
+  const m = document.getElementById('config-msg');
+  m.style.display = 'block';
+  setTimeout(() => m.style.display = 'none', 2500);
 }
 
 // ── 초기 로드 ──

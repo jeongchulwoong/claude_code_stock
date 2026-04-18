@@ -12,10 +12,11 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-import anthropic
+from google import genai
+from google.genai import types as gtypes
 from loguru import logger
 
-from config import AI_CONFIG, ANTHROPIC_API_KEY, LOG_DIR, RISK_CONFIG
+from config import AI_CONFIG, GEMINI_API_KEY, LOG_DIR, RISK_CONFIG
 from core.data_collector import StockSnapshot
 
 # ── 판단 결과 구조 ────────────────────────────
@@ -61,32 +62,18 @@ class AIJudge:
     """
 
     _SYSTEM_PROMPT = """\
-당신은 30년 경력의 퀀트 트레이더 AI입니다.
-주어진 기술지표와 시장 데이터를 종합하여 매수·매도·홀드를 판단합니다.
-
-판단 원칙:
-1. 손실 방어가 수익 추구보다 우선이다.
-2. 지표 하나만으로는 결코 판단하지 않는다.
-3. 불확실한 경우 HOLD를 선택한다.
-4. 신뢰도가 70점 미만이면 반드시 HOLD이다.
-
-응답은 반드시 아래 JSON 형식만 출력하고, 다른 텍스트는 절대 포함하지 않는다:
-{
-  "action": "BUY" | "SELL" | "HOLD",
-  "confidence": 0~100,
-  "reason": "판단 근거 2줄 요약 (한국어)",
-  "target_price": 목표가(int),
-  "stop_loss": 손절가(int),
-  "position_size": "SMALL" | "MEDIUM" | "LARGE"
-}
+You are a quant trader AI. Analyze the given stock indicators and output ONLY valid JSON.
+Rules: loss prevention > profit. Use multiple indicators. When uncertain, HOLD. confidence<70 must be HOLD.
+Respond with ONLY this JSON (no extra text, reason must be under 80 chars):
+{"action":"BUY"|"SELL"|"HOLD","confidence":0-100,"reason":"short English reason under 80 chars","target_price":int,"stop_loss":int,"position_size":"SMALL"|"MEDIUM"|"LARGE"}
 """
 
     def __init__(self) -> None:
-        if not ANTHROPIC_API_KEY:
-            logger.warning("ANTHROPIC_API_KEY 미설정 — MockAIJudge 모드로 동작")
+        if not GEMINI_API_KEY:
+            logger.warning("GEMINI_API_KEY 미설정 — MockAIJudge 모드로 동작")
             self._mock = True
         else:
-            self._client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
             self._mock = False
 
     def judge(self, snap: StockSnapshot) -> AIVerdict:
@@ -96,17 +83,18 @@ class AIJudge:
 
         prompt = self._build_prompt(snap)
         try:
-            response = self._client.messages.create(
-                model       = AI_CONFIG["model"],
-                max_tokens  = AI_CONFIG["max_tokens"],
-                temperature = AI_CONFIG["temperature"],
-                system      = self._SYSTEM_PROMPT,
-                messages    = [{"role": "user", "content": prompt}],
+            response = self._client.models.generate_content(
+                model    = AI_CONFIG["model"],
+                contents = self._SYSTEM_PROMPT + "\n\n" + prompt,
+                config   = gtypes.GenerateContentConfig(
+                    temperature = AI_CONFIG["temperature"],
+                    max_output_tokens = AI_CONFIG["max_tokens"],
+                ),
             )
-            raw = response.content[0].text
+            raw = response.text
             verdict = self._parse_verdict(snap.ticker, raw, snap.current_price)
         except Exception as e:
-            logger.error("Claude API 호출 실패: {} — HOLD 처리", e)
+            logger.error("Gemini API 호출 실패: {} — HOLD 처리", e)
             verdict = self._fallback_verdict(snap)
 
         self._log_verdict(verdict)
@@ -150,19 +138,28 @@ PER: {snap.per:.1f} | 외국인 보유율: {snap.foreigner_pct:.1f}%
 
     @staticmethod
     def _parse_verdict(ticker: str, raw: str, current_price: int) -> AIVerdict:
-        """Claude 응답 JSON을 파싱하여 AIVerdict 반환"""
-        # JSON 블록 추출 (```json ... ``` 방어)
+        """Gemini 응답 JSON을 파싱하여 AIVerdict 반환"""
         clean = re.sub(r"```json|```", "", raw).strip()
+        # JSON 블록만 추출 (앞뒤 텍스트 제거)
+        m = re.search(r"\{.*\}", clean, re.DOTALL)
+        if m:
+            clean = m.group(0)
+        # 잘린 JSON 복구: 마지막 완전한 key:value 까지만 사용
         try:
             data = json.loads(clean)
-        except json.JSONDecodeError as e:
-            logger.error("JSON 파싱 실패: {} | raw={}", e, raw[:200])
-            return AIVerdict(
-                ticker=ticker, action="HOLD", confidence=0,
-                reason="AI 응답 파싱 실패 — 안전 HOLD",
-                target_price=current_price, stop_loss=int(current_price * 0.97),
-                position_size="SMALL", raw_response=raw,
-            )
+        except json.JSONDecodeError:
+            # 닫히지 않은 JSON 강제 복구
+            clean = re.sub(r',\s*"[^"]*"\s*:\s*[^,}\]]*$', "", clean).rstrip(",") + "}"
+            try:
+                data = json.loads(clean)
+            except json.JSONDecodeError as e:
+                logger.error("JSON 파싱 실패: {} | raw={}", e, raw[:200])
+                return AIVerdict(
+                    ticker=ticker, action="HOLD", confidence=0,
+                    reason="AI response parse error",
+                    target_price=current_price, stop_loss=int(current_price * 0.97),
+                    position_size="SMALL", raw_response=raw,
+                )
 
         return AIVerdict(
             ticker        = ticker,

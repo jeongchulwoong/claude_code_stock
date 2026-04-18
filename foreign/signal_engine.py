@@ -15,11 +15,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-import anthropic
+from google import genai
+from google.genai import types as gtypes
 import requests
 from loguru import logger
 
-from config import ANTHROPIC_API_KEY, AI_CONFIG, DB_PATH, TELEGRAM_CONFIG
+from config import GEMINI_API_KEY, AI_CONFIG, DB_PATH, TELEGRAM_CONFIG
 from foreign.api_client import ForeignSnapshot
 
 # ── 해외주식 AI 판단 결과 ─────────────────────
@@ -77,9 +78,9 @@ class ForeignSignalEngine:
 }"""
 
     def __init__(self) -> None:
-        self._mock = not bool(ANTHROPIC_API_KEY)
+        self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            self._client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
 
     def generate(self, snap: ForeignSnapshot) -> ForeignSignal:
         """ForeignSnapshot → ForeignSignal"""
@@ -88,14 +89,15 @@ class ForeignSignalEngine:
 
         prompt = self._build_prompt(snap)
         try:
-            resp = self._client.messages.create(
-                model      = AI_CONFIG["model"],
-                max_tokens = AI_CONFIG["max_tokens"],
-                temperature= AI_CONFIG["temperature"],
-                system     = self._SYSTEM,
-                messages   = [{"role": "user", "content": prompt}],
+            resp = self._client.models.generate_content(
+                model    = AI_CONFIG["model"],
+                contents = self._SYSTEM + "\n\n" + prompt,
+                config   = gtypes.GenerateContentConfig(
+                    temperature=AI_CONFIG["temperature"],
+                    max_output_tokens=AI_CONFIG["max_tokens"],
+                ),
             )
-            raw  = resp.content[0].text
+            raw  = resp.text
             data = json.loads(re.sub(r"```json|```", "", raw).strip())
         except Exception as e:
             logger.error("Claude API 오류 [{}]: {}", snap.ticker, e)

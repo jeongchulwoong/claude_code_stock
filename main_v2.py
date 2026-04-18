@@ -27,6 +27,12 @@ from __future__ import annotations
 import signal
 import sys
 import time
+
+# Windows 터미널 UTF-8 강제 설정 (이모지/한글 출력)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from datetime import datetime, time as dtime
 
 from loguru import logger

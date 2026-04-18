@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from config import AI_CONFIG, ANTHROPIC_API_KEY, DB_PATH, RISK_CONFIG
+from config import AI_CONFIG, GEMINI_API_KEY, DB_PATH, RISK_CONFIG
 
 
 # ── 멀티 타임프레임 스냅샷 ───────────────────
@@ -349,10 +349,10 @@ class AdvancedAIJudge:
     def __init__(self) -> None:
         self._calibrator = ConfidenceCalibrator()
         self._builder    = MultiTimeframeBuilder()
-        self._mock = not bool(ANTHROPIC_API_KEY)
+        self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            import anthropic
-            self._client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            from google import genai
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
 
     def judge(
         self,
@@ -363,16 +363,18 @@ class AdvancedAIJudge:
 
         prompt = self._build_prompt(mtf_snap)
         try:
-            import anthropic
-            resp = self._client.messages.create(
-                model      = AI_CONFIG["model"],
-                max_tokens = 1500,
-                temperature= 0,
-                system     = self._SYSTEM,
-                messages   = [{"role": "user", "content": prompt}],
+            from google.genai import types as gtypes
+            resp = self._client.models.generate_content(
+                model    = AI_CONFIG["model"],
+                contents = self._SYSTEM + "\n\n" + prompt,
+                config   = gtypes.GenerateContentConfig(
+                    temperature=0, max_output_tokens=AI_CONFIG["max_tokens"]
+                ),
             )
-            raw  = resp.content[0].text
-            data = json.loads(re.sub(r"```json|```", "", raw).strip())
+            raw   = resp.text
+            clean = re.sub(r"```json|```", "", raw).strip()
+            m     = re.search(r"\{.*\}", clean, re.DOTALL)
+            data  = json.loads(m.group(0) if m else clean)
         except Exception as e:
             logger.error("AI 호출 실패 [{}]: {}", mtf_snap.ticker, e)
             return self._fallback(mtf_snap)

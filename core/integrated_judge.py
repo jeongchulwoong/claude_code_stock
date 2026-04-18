@@ -20,7 +20,7 @@ from typing import Literal, Optional
 
 from loguru import logger
 
-from config import AI_CONFIG, ANTHROPIC_API_KEY, RISK_CONFIG
+from config import AI_CONFIG, GEMINI_API_KEY, RISK_CONFIG
 from core.data_collector import StockSnapshot
 from core.news_analyzer import NewsVerdict, StockNewsService
 
@@ -95,10 +95,10 @@ class IntegratedJudge:
 
     def __init__(self) -> None:
         self._news_service = StockNewsService()
-        self._mock = not bool(ANTHROPIC_API_KEY)
+        self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            import anthropic
-            self._client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            from google import genai
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
 
     def judge(
         self,
@@ -166,18 +166,20 @@ class IntegratedJudge:
     def _claude_judge(self, snap: StockSnapshot, news_v: NewsVerdict) -> dict:
         prompt = self._build_prompt(snap, news_v)
         try:
-            import anthropic
-            resp = self._client.messages.create(
-                model      = AI_CONFIG["model"],
-                max_tokens = 700,
-                temperature= 0,
-                system     = self._SYSTEM,
-                messages   = [{"role": "user", "content": prompt}],
+            from google.genai import types as gtypes
+            resp = self._client.models.generate_content(
+                model    = AI_CONFIG["model"],
+                contents = self._SYSTEM + "\n\n" + prompt,
+                config   = gtypes.GenerateContentConfig(
+                    temperature=0, max_output_tokens=AI_CONFIG["max_tokens"]
+                ),
             )
-            raw  = resp.content[0].text
-            return json.loads(re.sub(r"```json|```", "", raw).strip())
+            raw = resp.text
+            clean = re.sub(r"```json|```", "", raw).strip()
+            m = re.search(r"\{.*\}", clean, re.DOTALL)
+            return json.loads(m.group(0) if m else clean)
         except Exception as e:
-            logger.error("통합 판단 Claude 오류 [{}]: {}", snap.ticker, e)
+            logger.error("통합 판단 Gemini 오류 [{}]: {}", snap.ticker, e)
             return {"action":"HOLD","confidence":0,"reason":"API 오류",
                     "target_price":snap.current_price,"stop_loss":int(snap.current_price*0.97),"position_size":"SMALL"}
 
