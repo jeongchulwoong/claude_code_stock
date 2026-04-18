@@ -82,19 +82,26 @@ Respond with ONLY this JSON (no extra text, reason must be under 80 chars):
             return self._mock_verdict(snap)
 
         prompt = self._build_prompt(snap)
-        try:
-            response = self._client.models.generate_content(
-                model    = AI_CONFIG["model"],
-                contents = self._SYSTEM_PROMPT + "\n\n" + prompt,
-                config   = gtypes.GenerateContentConfig(
-                    temperature = AI_CONFIG["temperature"],
-                    max_output_tokens = AI_CONFIG["max_tokens"],
-                ),
-            )
-            raw = response.text
-            verdict = self._parse_verdict(snap.ticker, raw, snap.current_price)
-        except Exception as e:
-            logger.error("Gemini API 호출 실패: {} — HOLD 처리", e)
+        verdict = None
+        for attempt in range(3):
+            try:
+                import time as _time
+                if attempt > 0:
+                    _time.sleep(attempt * 3)
+                response = self._client.models.generate_content(
+                    model    = AI_CONFIG["model"],
+                    contents = self._SYSTEM_PROMPT + "\n\n" + prompt,
+                    config   = gtypes.GenerateContentConfig(
+                        temperature = AI_CONFIG["temperature"],
+                        max_output_tokens = AI_CONFIG["max_tokens"],
+                    ),
+                )
+                raw = response.text
+                verdict = self._parse_verdict(snap.ticker, raw, snap.current_price)
+                break
+            except Exception as e:
+                logger.warning("Gemini API 시도 {}/3 실패 [{}]: {}", attempt + 1, snap.ticker, e)
+        if verdict is None:
             verdict = self._fallback_verdict(snap)
 
         self._log_verdict(verdict)

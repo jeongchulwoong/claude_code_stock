@@ -295,3 +295,109 @@ class DataCollector:
         result["stochastic_k"] = round(float(stoch_k.iloc[-1]), 2)
 
         return result
+
+
+# ── yfinance 기반 DataCollector ───────────────
+
+class YFinanceDataCollector:
+    """
+    PyQt5/키움 없이 yfinance + FinanceDataReader로 실제 시세를 수집한다.
+    DataCollector와 동일한 get_snapshot / get_snapshots 인터페이스 제공.
+    """
+
+    def __init__(self) -> None:
+        try:
+            import FinanceDataReader as fdr
+            self._fdr = fdr
+        except ImportError:
+            self._fdr = None
+
+    def get_snapshot(self, ticker: str) -> StockSnapshot | None:
+        import yfinance as yf
+        try:
+            # 이름("삼성전자") → 티커("005930.KS") 변환
+            from stock_universe import resolve
+            ticker, _ = resolve(ticker)
+
+            is_kr = ticker.endswith(".KS") or ticker.endswith(".KQ")
+            code  = ticker.split(".")[0] if is_kr else None
+            df = None
+
+            # 한국 종목: FinanceDataReader 우선
+            if is_kr and self._fdr:
+                try:
+                    raw = self._fdr.DataReader(
+                        code,
+                        pd.Timestamp.today() - pd.Timedelta(days=200),
+                    )
+                    if raw is not None and len(raw) >= 20:
+                        df = raw.rename(columns=str.lower)
+                        df = df.rename(columns={"adj close": "close"})
+                except Exception:
+                    pass
+
+            if df is None:
+                raw = yf.download(ticker, period="6mo", interval="1d",
+                                  progress=False, auto_adjust=True)
+                if raw is None or len(raw) < 20:
+                    return None
+                raw.columns = [c.lower() for c in raw.columns]
+                df = raw
+
+            close_s  = df["close"].squeeze().astype(float)
+            volume_s = df["volume"].squeeze().astype(float)
+
+            # 현재가: Google Finance → yfinance fast_info → 종가 순 fallback
+            price = None
+            try:
+                from core.price_fetcher import get_current_price
+                gf_price = get_current_price(ticker)
+                if gf_price and gf_price > 0:
+                    price = int(gf_price)
+            except Exception:
+                pass
+            if not price:
+                try:
+                    lp = yf.Ticker(ticker).fast_info.last_price
+                    if lp and not pd.isna(lp):
+                        price = int(float(lp))
+                except Exception:
+                    pass
+            if not price:
+                price = int(close_s.iloc[-1])
+
+            vol_avg   = float(volume_s.iloc[-20:-1].mean())
+            vol_today = float(volume_s.iloc[-1])
+            vol_ratio = round(vol_today / vol_avg, 2) if vol_avg > 0 else 1.0
+
+            # _calc_indicators expects lowercase columns
+            indicators = DataCollector._calc_indicators(df)
+
+            from stock_universe import get_name
+            name = get_name(ticker)
+
+            return StockSnapshot(
+                ticker        = ticker,
+                name          = name,
+                current_price = price,
+                open_price    = int(float(df["open"].iloc[-1])) if "open" in df.columns else price,
+                high_price    = int(float(df["high"].iloc[-1])) if "high" in df.columns else price,
+                low_price     = int(float(df["low"].iloc[-1]))  if "low"  in df.columns else price,
+                volume        = int(vol_today),
+                volume_ratio  = vol_ratio,
+                per           = 0.0,
+                foreigner_pct = 0.0,
+                daily_df      = df,
+                **indicators,
+            )
+        except Exception as e:
+            logger.error("YFinanceDataCollector 수집 실패: {} | {}", ticker, e)
+            return None
+
+    def get_snapshots(self, tickers: list[str]) -> list[StockSnapshot]:
+        results = []
+        for ticker in tickers:
+            snap = self.get_snapshot(ticker)
+            if snap:
+                results.append(snap)
+        return results

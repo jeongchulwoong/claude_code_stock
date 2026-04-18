@@ -83,7 +83,7 @@ def main():
 
     # ── 2. 컴포넌트 초기화 ───────────────────
     from core.kiwoom_api import get_kiwoom_api
-    from core.data_collector import DataCollector
+    from core.data_collector import DataCollector, YFinanceDataCollector
     from core.integrated_judge import IntegratedJudge
     from core.ai_judge_advanced import MultiTimeframeBuilder, AdvancedAIJudge
     from core.order_manager import OrderManager
@@ -107,7 +107,8 @@ def main():
     from strategies.sector_rotation import SectorRotationStrategy
 
     kw      = get_kiwoom_api(paper_trading=PAPER_TRADING)
-    dc      = DataCollector(kw)
+    from core.kiwoom_api import MockKiwoomAPI
+    dc = YFinanceDataCollector() if isinstance(kw, MockKiwoomAPI) else DataCollector(kw)
     rm      = RiskManager()
     om      = OrderManager(kw, rm)
     pm      = PortfolioManager(rm)

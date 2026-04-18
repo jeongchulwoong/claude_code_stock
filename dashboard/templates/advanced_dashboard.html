@@ -235,7 +235,7 @@ function switchTab(t){
 setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString('ko-KR'),1000);
 
 // ── WebSocket ──
-const socket=io();
+const socket=io('http://localhost:5001');
 const dot=document.getElementById('ws-dot'), wsl=document.getElementById('ws-label');
 socket.on('connect',()=>{dot.className='ws-dot on';wsl.textContent='실시간';addFeed('🟢','시스템','연결됨')});
 socket.on('disconnect',()=>{dot.className='ws-dot';wsl.textContent='끊김';addFeed('🔴','시스템','연결 해제')});
