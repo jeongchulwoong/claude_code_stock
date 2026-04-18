@@ -99,6 +99,69 @@ def api_screener():
         return jsonify([])
 
 
+@app.route("/advanced")
+def advanced():
+    return render_template("advanced_dashboard.html")
+
+@app.route("/api/foreign_signals")
+def api_foreign_signals():
+    try:
+        with sqlite3.connect(DB_PATH) as con:
+            rows = con.execute(
+                "SELECT ticker, action, confidence, reason, current_price, change_pct, news_sentiment, generated_at "
+                "FROM foreign_signals ORDER BY generated_at DESC LIMIT 20"
+            ).fetchall()
+        return jsonify([{
+            "ticker": r[0], "action": r[1], "confidence": r[2],
+            "reason": r[3], "current_price": r[4], "change_pct": r[5],
+            "news_sentiment": r[6], "generated_at": r[7]
+        } for r in rows])
+    except Exception:
+        return jsonify([])
+
+@app.route("/api/run_screener")
+def api_run_screener():
+    try:
+        from core.screener import MarketScreener
+        screener = MarketScreener()
+        result   = screener.run(use_mock=True, min_score=20.0)
+        return jsonify({"candidates": len(result.candidates), "scanned": result.total_scanned})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/api/attribution")
+def api_attribution():
+    try:
+        from core.performance_attribution import PerformanceAttributor
+        pa = PerformanceAttributor()
+        r  = pa.analyze()
+        return jsonify({
+            "total_pnl": r.total_pnl,
+            "by_strategy": r.by_strategy,
+            "by_ticker": r.by_ticker,
+            "by_sector": r.by_sector,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/api/alerts")
+def api_alerts():
+    try:
+        with sqlite3.connect(DB_PATH) as con:
+            rows = con.execute(
+                "SELECT rule_id, ticker, name, alert_type, threshold, active "
+                "FROM alert_rules ORDER BY id DESC LIMIT 50"
+            ).fetchall()
+        return jsonify([{
+            "rule_id": r[0], "ticker": r[1], "name": r[2],
+            "alert_type": r[3], "threshold": r[4], "active": bool(r[5])
+        } for r in rows])
+    except Exception:
+        return jsonify([])
+
+from config import DB_PATH as DB_PATH
+import sqlite3
+
 # ── 진입점 ────────────────────────────────────
 
 if __name__ == "__main__":

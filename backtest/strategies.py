@@ -188,3 +188,57 @@ STRATEGY_REGISTRY: dict[str, callable] = {
     "rsi_contrarian": rsi_contrarian_strategy,
     "combo":          combo_strategy,
 }
+
+
+# ── 7. 돌파 전략 ─────────────────────────────
+
+def breakout_strategy(df: pd.DataFrame, i: int) -> str:
+    """
+    20일 고점 돌파 + 거래량 1.5배 + RSI 45~70 + MACD > 0
+    """
+    if i < 20:
+        return "HOLD"
+    row      = df.iloc[i]
+    high_20  = df["high"].iloc[i-20:i].max()
+
+    if (
+        row["close"]    > high_20 and
+        row["vol_ratio"]>= 1.5 and
+        45 <= row["rsi"]<= 70 and
+        row["macd"]     > 0
+    ):
+        return "BUY"
+
+    # 청산: 10일 저점 하회
+    if i >= 10 and row["close"] < df["low"].iloc[i-10:i].min():
+        return "SELL"
+    if row["rsi"] > 75:
+        return "SELL"
+    return "HOLD"
+
+
+# ── 8. 거래량 급등 전략 ───────────────────────
+
+def volume_surge_strategy(df: pd.DataFrame, i: int) -> str:
+    """
+    거래량 3배+ + RSI < 60 + 양봉 + BB 하단·중단
+    """
+    row = df.iloc[i]
+    is_bull = row["close"] > row["open"]
+
+    if (
+        row["vol_ratio"] >= 3.0 and
+        row["rsi"]        < 60 and
+        is_bull and
+        row["bb_pct"]     < 0.7
+    ):
+        return "BUY"
+
+    if row["vol_ratio"] < 1.0 and row["rsi"] > 65:
+        return "SELL"
+    return "HOLD"
+
+
+# 레지스트리에 추가
+STRATEGY_REGISTRY["breakout"]      = breakout_strategy
+STRATEGY_REGISTRY["volume_surge"]  = volume_surge_strategy
