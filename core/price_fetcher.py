@@ -1,22 +1,29 @@
 """
-core/price_fetcher.py — Google Finance 기반 현재가 조회
+core/price_fetcher.py — Google Finance 내장 JSON 기반 정확한 현재가 조회
+
+Google Finance 페이지(https://www.google.com/finance/quote/TICKER:EXCHANGE)에
+AF_initDataCallback으로 내장된 JSON 구조에서 직접 파싱한다.
+
+JSON 구조:
+  [entity_id, [ticker, exchange], name, ?, currency,
+   [price, change, change_pct, ...], ?, prev_close, ...]
 
 사용:
-    from core.price_fetcher import get_current_price
-    price = get_current_price("NKE")       # 미국 주식
-    price = get_current_price("005930.KS") # 한국 주식
+    from core.price_fetcher import get_current_price, get_quote
+    price = get_current_price("NKE")       # 46.03
+    q     = get_quote("NKE")               # {'price': 46.03, 'change': 0.33, ...}
 """
 from __future__ import annotations
 
+import json
 import re
 import time
-from functools import lru_cache
 from typing import Optional
 
 import requests
 from loguru import logger
 
-# ── 거래소 매핑 ──────────────────────────────
+# ── 거래소 매핑 ──────────────────────────────────
 
 _EXCHANGE_MAP: dict[str, str] = {
     # NASDAQ
@@ -52,12 +59,12 @@ _HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
 
 def _ticker_to_gf(ticker: str) -> str:
-    """ticker → Google Finance 'TICKER:EXCHANGE' 형식 변환"""
+    """ticker → Google Finance 'TICKER:EXCHANGE' 형식"""
     if ticker.endswith(".KS"):
         return f"{ticker[:-3]}:KRX"
     if ticker.endswith(".KQ"):
@@ -66,55 +73,120 @@ def _ticker_to_gf(ticker: str) -> str:
     return f"{ticker}:{exchange}"
 
 
-def _parse_price(html: str) -> Optional[float]:
-    """Google Finance HTML에서 현재가 추출"""
-    # 방법 1: data-last-price attribute
+def _parse_embedded_json(html: str, ticker: str) -> Optional[dict]:
+    """
+    AF_initDataCallback 내장 JSON에서 가격 데이터를 추출한다.
+
+    구조: [entity_id, [ticker, exchange], name, ?, currency,
+            [price, change, change_pct, ...], ?, prev_close, ...]
+    """
+    # ticker 부분 (예: "NKE" from "NKE:NYSE")
+    base_ticker = ticker.split(":")[0]
+
+    # 내장 JSON 블록 전체 추출
+    pattern = (
+        r'AF_initDataCallback\(\{[^}]*data:\[.*?'
+        r'\["' + re.escape(base_ticker) + r'","[A-Z]+"\]'
+        r'.*?\}\)'
+    )
+    # 간단한 패턴: 티커 배열 + 앞뒤 컨텍스트
+    # entity ID는 /m/... 또는 /g/... 형식 모두 허용
+    ctx_pattern = (
+        r'"/[a-z]/[^"]+",\["' + re.escape(base_ticker) + r'","([A-Z]+)"\],'
+        r'"([^"]+)",\d+,"([A-Z]+)",\[([-\d.,]+)\],(?:null|-?\d+),([\d.]+)'
+    )
+    m = re.search(ctx_pattern, html)
+    if not m:
+        return None
+
+    exchange   = m.group(1)
+    name       = m.group(2)
+    currency   = m.group(3)
+    price_arr  = m.group(4).split(",")   # [price, change, change_pct, ...]
+    prev_close = float(m.group(5))
+
+    try:
+        price      = float(price_arr[0])
+        change     = float(price_arr[1]) if len(price_arr) > 1 else 0.0
+        change_pct = float(price_arr[2]) if len(price_arr) > 2 else 0.0
+    except (ValueError, IndexError):
+        return None
+
+    if price <= 0:
+        return None
+
+    return {
+        "ticker":     base_ticker,
+        "exchange":   exchange,
+        "name":       name,
+        "currency":   currency,
+        "price":      price,
+        "change":     round(change, 4),
+        "change_pct": round(change_pct, 4),
+        "prev_close": prev_close,
+    }
+
+
+def _parse_fallback(html: str) -> Optional[float]:
+    """data-last-price 속성으로 fallback"""
     m = re.search(r'data-last-price="([\d.]+)"', html)
     if m:
         return float(m.group(1))
-
-    # 방법 2: YMlKec 클래스 span (Google Finance 가격 span)
-    m = re.search(r'class="[^"]*YMlKec[^"]*"[^>]*>([\d,]+\.?\d*)<', html)
+    m = re.search(r'class="[^"]*YMlKec[^"]*"[^>]*>\$?([\d,]+\.?\d*)<', html)
     if m:
         return float(m.group(1).replace(",", ""))
-
-    # 방법 3: JSON 데이터 내 가격
-    m = re.search(r'"([\d]+\.?\d+)",\s*(?:null|"[^"]*"),\s*"(?:USD|KRW|EUR|JPY|TWD|HKD|CHF)"', html)
-    if m:
-        return float(m.group(1).replace(",", ""))
-
-    # 방법 4: 일반 숫자 패턴 (fallback)
-    m = re.search(r'itemprop="price"\s+content="([\d.]+)"', html)
-    if m:
-        return float(m.group(1))
-
     return None
 
 
-def get_current_price(ticker: str, timeout: int = 8) -> Optional[float]:
+def get_quote(ticker: str, timeout: int = 8) -> Optional[dict]:
     """
-    Google Finance에서 현재가를 가져온다.
-    실패 시 yfinance fast_info로 fallback.
+    Google Finance에서 종목 시세 전체(가격·변동·환율 등)를 반환한다.
+    실패 시 None 반환.
     """
     gf_ticker = _ticker_to_gf(ticker)
     url = f"https://www.google.com/finance/quote/{gf_ticker}"
 
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=timeout)
-        if resp.status_code == 200:
-            price = _parse_price(resp.text)
-            if price and price > 0:
-                logger.debug("GF 가격 [{}]: {}", ticker, price)
-                return price
-            logger.warning("GF 파싱 실패 [{}] — yfinance fallback", ticker)
-    except Exception as e:
-        logger.warning("GF 요청 실패 [{}]: {} — yfinance fallback", ticker, e)
+        if resp.status_code != 200:
+            logger.warning("GF HTTP {} [{}]", resp.status_code, ticker)
+            return None
+        html = resp.text
 
-    # fallback: yfinance
+        # 1순위: 내장 JSON 파싱
+        quote = _parse_embedded_json(html, gf_ticker)
+        if quote:
+            logger.debug("GF JSON [{}]: {} {}", ticker, quote["price"], quote["currency"])
+            return quote
+
+        # 2순위: data-last-price 속성 fallback
+        price = _parse_fallback(html)
+        if price and price > 0:
+            logger.debug("GF attr fallback [{}]: {}", ticker, price)
+            return {"ticker": ticker, "price": price, "currency": "USD",
+                    "change": 0.0, "change_pct": 0.0, "prev_close": 0.0}
+
+        logger.warning("GF 파싱 실패 [{}]", ticker)
+    except Exception as e:
+        logger.warning("GF 요청 실패 [{}]: {}", ticker, e)
+
+    return None
+
+
+def get_current_price(ticker: str, timeout: int = 8) -> Optional[float]:
+    """
+    Google Finance → yfinance fast_info 순서로 현재가를 반환한다.
+    """
+    quote = get_quote(ticker, timeout)
+    if quote:
+        return quote["price"]
+
+    # 최종 fallback: yfinance
     try:
         import yfinance as yf
         lp = yf.Ticker(ticker).fast_info.last_price
         if lp and lp > 0:
+            logger.debug("yfinance fallback [{}]: {}", ticker, lp)
             return float(lp)
     except Exception:
         pass
