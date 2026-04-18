@@ -152,8 +152,10 @@ def main():
     cmd.send_startup_message()
 
     # 기본 알림 등록
-    for ticker in WATCH_LIST[:3]:
-        am.add_volume_alert(ticker, ticker, multiplier=3.5)
+    from stock_universe import resolve as _resolve
+    for name in WATCH_LIST[:3]:
+        _t, _ = _resolve(name)
+        am.add_volume_alert(_t, _t, multiplier=3.5)
 
     logger.info("대시보드: python dashboard/realtime_app.py → http://localhost:5001/advanced")
 
@@ -278,11 +280,11 @@ def main():
 
             # 통합 AI 판단 (뉴스 + 기술지표)
             verdict = int_judge.judge(snap, fetch_news=True)
-            verdict.ticker = ticker
+            verdict.ticker = snap.ticker  # resolved ticker (e.g. "AAPL"), not name
 
             # 신호 기록
             tracker.record_signal(
-                active_strategy.name, ticker,
+                active_strategy.name, snap.ticker,
                 verdict.action, verdict.confidence,
                 snap.current_price, verdict.is_executable,
                 verdict.reason,
@@ -293,7 +295,7 @@ def main():
             # 뉴스 악재 차단
             if verdict.news_blocked:
                 tg.notify_text(
-                    f"⛔ 뉴스 차단: {ticker} | "
+                    f"⛔ 뉴스 차단: {snap.ticker} | "
                     f"{verdict.news_judgment}({verdict.news_score:+d}점)\n"
                     f"{verdict.news_reason[:80]}"
                 )
@@ -326,15 +328,16 @@ def main():
             if verdict.news_key_points:
                 kp = "\n".join(f"  • {p}" for p in verdict.news_key_points)
                 tg.notify_text(
-                    f"📰 {ticker} 뉴스 분석\n"
+                    f"📰 {snap.ticker} 뉴스 분석\n"
                     f"판정: {verdict.news_judgment}({verdict.news_score:+d}점)\n{kp}"
                 )
 
             # Kelly 사이징 정보
+            from core.telegram_bot import _fmt_price
             tg.notify_text(
-                f"⚖️ 포지션 사이징 [{ticker}]\n"
+                f"⚖️ 포지션 사이징 [{snap.ticker}]\n"
                 f"Kelly:{sizing.kelly_fraction:.1%} | {sizing.qty}주\n"
-                f"손절:{sizing.stop_loss:,}원({sizing.stop_loss_pct:.1f}%)"
+                f"손절:{_fmt_price(snap.ticker, sizing.stop_loss)}({sizing.stop_loss_pct:.1f}%)"
             )
 
         logger.info("스캔 #{} 완료 | {}초 후 재실행", scan_count, interval)
