@@ -106,11 +106,23 @@ def fetch_and_score(ticker: str, name: str):
         close  = df["Close"].squeeze()
         volume = df["Volume"].squeeze()
 
-        # 현재가: fast_info.last_price 우선 (장중/장후 최신값)
+        # 현재가: Google Finance → yfinance fast_info → 종가 순 fallback
+        price = None
         try:
-            last = yf.Ticker(ticker).fast_info.last_price
-            price = float(last) if last and not pd.isna(last) else float(close.iloc[-1])
+            from core.price_fetcher import get_current_price
+            gf = get_current_price(ticker)
+            if gf and gf > 0:
+                price = float(gf)
         except Exception:
+            pass
+        if not price:
+            try:
+                last = yf.Ticker(ticker).fast_info.last_price
+                if last and not pd.isna(last):
+                    price = float(last)
+            except Exception:
+                pass
+        if not price:
             price = float(close.iloc[-1])
 
         rsi      = calc_rsi(close)
@@ -174,7 +186,7 @@ def run_once():
             "INSERT INTO screener_results "
             "(run_date,ticker,name,price,score,reasons,screened_at) "
             "VALUES (?,?,?,?,?,?,?)",
-            (run_date, r["ticker"], r["name"], int(r["price"]),
+            (run_date, r["ticker"], r["name"], round(r["price"], 2),
              r["score"], r["reasons"], now)
         )
     conn.commit()

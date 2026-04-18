@@ -357,6 +357,18 @@ async function loadPortfolio(){
     </div>`).join('');
 }
 
+// ── 통화 포맷 ──
+function fmtPrice(ticker, price){
+  if(!price && price!==0) return '-';
+  const t=ticker||'';
+  if(t.endsWith('.KS')||t.endsWith('.KQ')) return price.toLocaleString()+'원';
+  if(t.endsWith('.T'))  return '¥'+price.toLocaleString();
+  if(t.endsWith('.HK')) return 'HK$'+price.toLocaleString();
+  if(t.endsWith('.SW')||t.endsWith('.TW')) return price.toLocaleString();
+  // 미국/기타 → USD
+  return '$'+price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
 // ── 스크리너 ──
 async function loadScreener(){
   const data=await fetch('/api/screener').then(r=>r.json());
@@ -371,7 +383,7 @@ async function loadScreener(){
         <div><b style="font-size:12px">${d.name||d.ticker}</b><span style="font-size:10px;color:var(--text3);margin-left:4px">${d.ticker}</span></div>
         <span class="badge b-hot">${icon} ${score.toFixed(0)}점</span>
       </div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">${d.price?.toLocaleString()}원</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">${fmtPrice(d.ticker,d.price)}</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${reasons}</div>
       <div class="score-bar"><div class="score-fill" style="width:${score}%"></div></div>
     </div>`;
