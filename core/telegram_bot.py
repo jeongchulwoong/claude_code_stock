@@ -17,6 +17,17 @@ from config import PAPER_TRADING, TELEGRAM_CONFIG
 from core.ai_judge import AIVerdict
 
 
+def _fmt_price(ticker: str, price: float) -> str:
+    """티커에 맞는 통화 단위로 가격 포맷"""
+    if ticker.endswith(".KS") or ticker.endswith(".KQ"):
+        return f"{int(price):,}원"
+    if ticker.endswith(".T"):
+        return f"¥{int(price):,}"
+    if ticker.endswith(".HK"):
+        return f"HK${price:.2f}"
+    return f"${price:.2f}"
+
+
 class TelegramBot:
     """
     텔레그램 Bot API를 통해 매매 신호와 체결 알림을 전송한다.
@@ -48,14 +59,15 @@ class TelegramBot:
         pct_target = (verdict.target_price - current_price) / current_price * 100
         pct_stop   = (verdict.stop_loss - current_price) / current_price * 100
 
+        fp = lambda p: _fmt_price(verdict.ticker, p)
         msg = (
             f"{icon} {mode_tag}[{action_str}] {verdict.ticker}\n"
             f"{'━' * 22}\n"
-            f"현재가: {current_price:,}원\n"
+            f"현재가: {fp(current_price)}\n"
             f"신뢰도: {verdict.confidence}점 | 포지션: {verdict.position_size}\n"
             f"\nAI 판단 근거:\n  {verdict.reason}\n"
-            f"\n목표가: {verdict.target_price:,}원 ({pct_target:+.1f}%)\n"
-            f"손절가: {verdict.stop_loss:,}원 ({pct_stop:+.1f}%)\n"
+            f"\n목표가: {fp(verdict.target_price)} ({pct_target:+.1f}%)\n"
+            f"손절가: {fp(verdict.stop_loss)} ({pct_stop:+.1f}%)\n"
             f"{'━' * 22}\n"
             f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
@@ -74,11 +86,12 @@ class TelegramBot:
         mode_tag = "[페이퍼] " if PAPER_TRADING else ""
         pnl_str = f"\n실현손익: {pnl:+,.0f}원" if pnl is not None else ""
 
+        fp = lambda p: _fmt_price(ticker, p)
         msg = (
             f"{icon} {mode_tag}{ticker}\n"
             f"{'━' * 22}\n"
-            f"수량: {qty}주 | 단가: {price:,}원\n"
-            f"금액: {qty * price:,}원{pnl_str}\n"
+            f"수량: {qty}주 | 단가: {fp(price)}\n"
+            f"금액: {fp(qty * price)}{pnl_str}\n"
             f"⏰ {datetime.now().strftime('%H:%M:%S')}"
         )
         self._send(msg)
