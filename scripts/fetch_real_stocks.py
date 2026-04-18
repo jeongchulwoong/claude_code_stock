@@ -103,6 +103,10 @@ def fetch_and_score(ticker: str, name: str):
         if df is None or len(df) < 20:
             return None
 
+        # yfinance ≥0.2 may return MultiIndex columns like ('Close','NKE')
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[0] for c in df.columns]
+
         close  = df["Close"].squeeze()
         volume = df["Volume"].squeeze()
 

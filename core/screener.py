@@ -31,7 +31,7 @@ from config import DB_PATH, RISK_CONFIG
 class ScreenerCandidate:
     ticker:        str
     name:          str
-    current_price: int
+    current_price: float       # KRW: 정수, USD: 소수점 유지
     score:         float       # 1차 점수 (0~100)
     reasons:       list[str]   # 통과 조건 목록
     rsi:           float = 0.0
@@ -165,8 +165,11 @@ class MarketScreener:
         stoch_k   = getattr(snap, "stochastic_k",  50.0)
         price     = getattr(snap, "current_price",   0)
 
-        # 가격 필터 (100원 미만 동전주 제외)
-        if price < 100:
+        # 가격 필터: KRW 종목은 100원 미만, USD 종목은 $1 미만 제외
+        snap_ticker = getattr(snap, "ticker", ticker)
+        is_kr = snap_ticker.endswith(".KS") or snap_ticker.endswith(".KQ")
+        min_price = 100 if is_kr else 1
+        if price < min_price:
             return None
 
         # RSI 과매도
@@ -210,11 +213,13 @@ class MarketScreener:
         if len(reasons) < 2:
             return None
 
-        name = self.NAME_MAP.get(ticker, ticker)
+        # snap.ticker는 resolve() 후 실제 코드(예: "005930.KS", "NKE")
+        actual_ticker = getattr(snap, "ticker", ticker)
+        name = getattr(snap, "name", None) or self.NAME_MAP.get(actual_ticker, actual_ticker)
         return ScreenerCandidate(
-            ticker        = ticker,
+            ticker        = actual_ticker,
             name          = name,
-            current_price = int(price),
+            current_price = round(float(price), 2),
             score         = round(score, 1),
             reasons       = reasons,
             rsi           = rsi,

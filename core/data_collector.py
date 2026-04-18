@@ -341,7 +341,11 @@ class YFinanceDataCollector:
                                   progress=False, auto_adjust=True)
                 if raw is None or len(raw) < 20:
                     return None
-                raw.columns = [c.lower() for c in raw.columns]
+                # yfinance ≥0.2 may return MultiIndex columns like ('Close','NKE')
+                if isinstance(raw.columns, pd.MultiIndex):
+                    raw.columns = [c[0].lower() for c in raw.columns]
+                else:
+                    raw.columns = [c.lower() for c in raw.columns]
                 df = raw
 
             close_s  = df["close"].squeeze().astype(float)
