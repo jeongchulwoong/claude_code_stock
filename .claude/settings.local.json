@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://query1.finance.yahoo.com/v8/finance/chart/NKE?interval=1d&range=1d\" -H \"User-Agent: Mozilla/5.0\")"
+    ]
+  }
+}
