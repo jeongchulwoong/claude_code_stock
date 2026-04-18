@@ -43,3 +43,13 @@ alpha_vantage>=2.3.1
 # 백테스팅
 yfinance>=0.2.40
 pyarrow>=14.0.0
+
+# 스케줄러
+APScheduler>=3.10.0
+
+# 시스템 모니터링
+psutil>=5.9.0
+
+# 뉴스 파싱
+beautifulsoup4>=4.12.0
+lxml>=4.9.0

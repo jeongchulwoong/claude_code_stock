@@ -71,6 +71,33 @@ def api_health():
         "time":   datetime.now().isoformat(),
     })
 
+@app.route("/api/strategy_stats")
+def api_strategy_stats():
+    try:
+        from core.strategy_tracker import StrategyTracker
+        tracker = StrategyTracker()
+        return jsonify(tracker.get_all_stats_dict())
+    except Exception:
+        return jsonify({})
+
+@app.route("/api/screener")
+def api_screener():
+    import sqlite3
+    try:
+        with sqlite3.connect(DB_PATH) as con:
+            rows = con.execute(
+                "SELECT ticker, name, price, score, reasons, screened_at "
+                "FROM screener_results ORDER BY screened_at DESC, score DESC LIMIT 20"
+            ).fetchall()
+        import json
+        return jsonify([{
+            "ticker": r[0], "name": r[1], "price": r[2],
+            "score": r[3], "reasons": json.loads(r[4] or '[]'),
+            "screened_at": r[5]
+        } for r in rows])
+    except Exception:
+        return jsonify([])
+
 
 # ── 진입점 ────────────────────────────────────
 
