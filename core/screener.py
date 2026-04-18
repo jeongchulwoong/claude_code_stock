@@ -309,9 +309,16 @@ class MarketScreener:
         ]
         for i, c in enumerate(tops[:8], 1):
             icon = "🔥" if c.score >= 60 else "⭐" if c.score >= 40 else "🔹"
+            is_kr = c.ticker.endswith(".KS") or c.ticker.endswith(".KQ")
+            if is_kr:
+                price_str = f"{int(c.current_price):,}원"
+            elif c.ticker.endswith(".T"):
+                price_str = f"¥{int(c.current_price):,}"
+            else:
+                price_str = f"${c.current_price:.2f}"
             lines.append(
                 f"{icon} {i}. {c.name}({c.ticker})\n"
-                f"   점수:{c.score:.0f} | {c.current_price:,}원\n"
+                f"   점수:{c.score:.0f} | {price_str}\n"
                 f"   {' | '.join(c.reasons[:2])}"
             )
         lines.append(f"\n⏰ {datetime.now().strftime('%H:%M:%S')}")
