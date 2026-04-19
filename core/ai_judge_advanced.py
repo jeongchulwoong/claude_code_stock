@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from config import AI_CONFIG, GEMINI_API_KEY, DB_PATH, RISK_CONFIG
+from config import AI_CONFIG, GEMINI_API_KEY, DB_PATH, RISK_CONFIG, fmt_price
 
 
 # ── 멀티 타임프레임 스냅샷 ───────────────────
@@ -415,7 +415,7 @@ class AdvancedAIJudge:
 
         return f"""
 종목: {s.ticker} ({s.name})
-현재가: {s.current_price:,.0f}원  |  시장국면: {phase_kr.get(s.market_phase,'?')} (신뢰:{s.phase_confidence:.0%})
+현재가: {fmt_price(s.ticker, s.current_price)}  |  시장국면: {phase_kr.get(s.market_phase,'?')} (신뢰:{s.phase_confidence:.0%})
 
 ━━━ 일봉 (단기) ━━━
 RSI:       {s.d_rsi:.1f}  {'⚠ 과매도' if s.d_rsi<30 else '⚠ 과매수' if s.d_rsi>70 else ''}

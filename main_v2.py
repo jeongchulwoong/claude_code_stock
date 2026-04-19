@@ -333,7 +333,7 @@ def main():
                 )
 
             # Kelly 사이징 정보
-            from core.telegram_bot import _fmt_price
+            from config import fmt_price as _fmt_price
             tg.notify_text(
                 f"⚖️ 포지션 사이징 [{snap.ticker}]\n"
                 f"Kelly:{sizing.kelly_fraction:.1%} | {sizing.qty}주\n"

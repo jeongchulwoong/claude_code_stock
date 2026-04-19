@@ -27,10 +27,10 @@ class StockSnapshot:
     """AI 판단 엔진에 전달할 종목 스냅샷"""
     ticker: str
     name: str
-    current_price: int
-    open_price: int
-    high_price: int
-    low_price: int
+    current_price: float    # KRW: 정수, USD/JPY: 소수점 유지
+    open_price: float
+    high_price: float
+    low_price: float
     volume: int
     volume_ratio: float          # 평균 대비 거래량 비율
     per: float
@@ -352,23 +352,27 @@ class YFinanceDataCollector:
             volume_s = df["volume"].squeeze().astype(float)
 
             # 현재가: Google Finance → yfinance fast_info → 종가 순 fallback
-            price = None
+            # KRW: 정수 정밀도, USD/기타: 소수점 2자리 유지
+            def _round_price(p: float) -> float:
+                return float(int(p)) if is_kr else round(p, 2)
+
+            price: float | None = None
             try:
                 from core.price_fetcher import get_current_price
                 gf_price = get_current_price(ticker)
                 if gf_price and gf_price > 0:
-                    price = int(gf_price)
+                    price = _round_price(gf_price)
             except Exception:
                 pass
             if not price:
                 try:
                     lp = yf.Ticker(ticker).fast_info.last_price
                     if lp and not pd.isna(lp):
-                        price = int(float(lp))
+                        price = _round_price(float(lp))
                 except Exception:
                     pass
             if not price:
-                price = int(close_s.iloc[-1])
+                price = _round_price(float(close_s.iloc[-1]))
 
             vol_avg   = float(volume_s.iloc[-20:-1].mean())
             vol_today = float(volume_s.iloc[-1])
@@ -380,13 +384,16 @@ class YFinanceDataCollector:
             from stock_universe import get_name
             name = get_name(ticker)
 
+            def _ohlc(col: str) -> float:
+                return _round_price(float(df[col].iloc[-1])) if col in df.columns else price
+
             return StockSnapshot(
                 ticker        = ticker,
                 name          = name,
                 current_price = price,
-                open_price    = int(float(df["open"].iloc[-1])) if "open" in df.columns else price,
-                high_price    = int(float(df["high"].iloc[-1])) if "high" in df.columns else price,
-                low_price     = int(float(df["low"].iloc[-1]))  if "low"  in df.columns else price,
+                open_price    = _ohlc("open"),
+                high_price    = _ohlc("high"),
+                low_price     = _ohlc("low"),
                 volume        = int(vol_today),
                 volume_ratio  = vol_ratio,
                 per           = 0.0,

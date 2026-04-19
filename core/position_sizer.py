@@ -31,7 +31,7 @@ from core.data_collector import StockSnapshot
 class SizingResult:
     qty:            int        # 매수 수량
     invest_amount:  float      # 총 투자금액
-    stop_loss:      int        # ATR 기반 손절가
+    stop_loss:      float      # ATR 기반 손절가
     stop_loss_pct:  float      # 손절 % (계산값)
     kelly_fraction: float      # 계산된 Kelly 비중
     method:         str        # 사용된 방법
@@ -93,7 +93,7 @@ class PositionSizer:
         # 손절선을 RISK_CONFIG 최소값으로 clip
         config_stop_pct = RISK_CONFIG["stop_loss_pct"]  # 예: -0.03
         stop_pct        = max(atr_stop_pct, config_stop_pct)   # 더 좁은 쪽
-        stop_price      = int(price * (1 + stop_pct))
+        stop_price      = round(price * (1 + stop_pct), 2)
 
         # 2. Kelly Criterion 계산
         win_rate = ai_win_rate or self._win_rate

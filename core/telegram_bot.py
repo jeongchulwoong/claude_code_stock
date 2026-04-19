@@ -13,19 +13,8 @@ from typing import Optional
 import requests
 from loguru import logger
 
-from config import PAPER_TRADING, TELEGRAM_CONFIG
+from config import PAPER_TRADING, TELEGRAM_CONFIG, fmt_price as _fmt_price
 from core.ai_judge import AIVerdict
-
-
-def _fmt_price(ticker: str, price: float) -> str:
-    """티커에 맞는 통화 단위로 가격 포맷"""
-    if ticker.endswith(".KS") or ticker.endswith(".KQ"):
-        return f"{int(price):,}원"
-    if ticker.endswith(".T"):
-        return f"¥{int(price):,}"
-    if ticker.endswith(".HK"):
-        return f"HK${price:.2f}"
-    return f"${price:.2f}"
 
 
 class TelegramBot:

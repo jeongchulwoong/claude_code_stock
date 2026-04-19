@@ -284,25 +284,21 @@ def t_walk_forward():
     assert len(result.windows) >= 1
 
 # ═══════════════════════════════════════════
-# FOREIGN 테스트
+# PRICE FETCHER 테스트 (foreign 대체)
 # ═══════════════════════════════════════════
 
-def t_foreign_collector():
-    from foreign.api_client import ForeignDataCollector
-    dc   = ForeignDataCollector()
-    snap = dc.get_snapshot("AAPL")
-    assert snap.current_price > 0
-    assert snap.ticker == "AAPL"
+def t_price_fetcher():
+    from core.price_fetcher import get_current_price
+    price = get_current_price("AAPL")
+    assert price and price > 1.0, f"AAPL price invalid: {price}"
 
-def t_foreign_signal():
-    from foreign.api_client import ForeignDataCollector
-    from foreign.signal_engine import ForeignSignalEngine
-    dc   = ForeignDataCollector()
-    eng  = ForeignSignalEngine()
-    snap = dc.get_snapshot("NVDA")
-    sig  = eng.generate(snap)
-    assert sig.action in ("BUY","SELL","HOLD")
-    assert sig.ticker == "NVDA"
+def t_yfinance_collector():
+    from core.data_collector import YFinanceDataCollector
+    dc   = YFinanceDataCollector()
+    snap = dc.get_snapshot("AAPL")
+    assert snap is not None
+    assert snap.current_price > 1.0
+    assert snap.ticker == "AAPL"
 
 # ═══════════════════════════════════════════
 # DASHBOARD 테스트
@@ -311,13 +307,13 @@ def t_foreign_signal():
 def t_dashboard_api():
     import sys
     sys.path.insert(0,".")
-    from dashboard.app import app
+    from dashboard.realtime_app import app
     from dashboard.db_reader import seed_demo_data
     seed_demo_data()
     with app.test_client() as c:
-        for ep in ["/","/advanced","/api/summary","/api/orders",
-                   "/api/ticker_stats","/api/daily_pnl",
-                   "/api/strategy_stats","/api/screener","/api/health"]:
+        for ep in ["/", "/advanced", "/api/summary", "/api/orders",
+                   "/api/ticker_stats", "/api/daily_pnl",
+                   "/api/strategy_stats", "/api/screener", "/api/health"]:
             r = c.get(ep)
             assert r.status_code == 200, f"{ep} returned {r.status_code}"
 
@@ -358,9 +354,9 @@ def run_all(quick: bool = False):
         test("BacktestEngine (3전략)",   t_backtest_engine)
         test("MonteCarloSimulator",      t_monte_carlo)
         test("WalkForwardTester",        t_walk_forward)
-        # Foreign
-        test("ForeignDataCollector",     t_foreign_collector)
-        test("ForeignSignalEngine",      t_foreign_signal)
+        # Price / Data
+        test("PriceFetcher (Google Finance)", t_price_fetcher)
+        test("YFinanceDataCollector",    t_yfinance_collector)
 
     # Dashboard
     test("Dashboard API 전체",           t_dashboard_api)

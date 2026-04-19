@@ -16,7 +16,7 @@ from google import genai
 from google.genai import types as gtypes
 from loguru import logger
 
-from config import AI_CONFIG, GEMINI_API_KEY, LOG_DIR, RISK_CONFIG
+from config import AI_CONFIG, GEMINI_API_KEY, LOG_DIR, RISK_CONFIG, fmt_price
 from core.data_collector import StockSnapshot
 
 # ── 판단 결과 구조 ────────────────────────────
@@ -27,8 +27,8 @@ class AIVerdict:
     action:        Literal["BUY", "SELL", "HOLD"]
     confidence:    int           # 0~100
     reason:        str
-    target_price:  int
-    stop_loss:     int
+    target_price:  float
+    stop_loss:     float
     position_size: Literal["SMALL", "MEDIUM", "LARGE"]
     raw_response:  str = ""      # 디버깅용 원본 응답
 
@@ -120,10 +120,10 @@ Respond with ONLY this JSON (no extra text, reason must be under 80 chars):
 
 종목코드: {snap.ticker}
 종목명: {snap.name}
-현재가: {snap.current_price:,}원
+현재가: {fmt_price(snap.ticker, snap.current_price)}
 
 ─── 가격 정보 ───
-시가: {snap.open_price:,} | 고가: {snap.high_price:,} | 저가: {snap.low_price:,}
+시가: {fmt_price(snap.ticker, snap.open_price)} | 고가: {fmt_price(snap.ticker, snap.high_price)} | 저가: {fmt_price(snap.ticker, snap.low_price)}
 거래량: {snap.volume:,} | 거래량비율: {snap.volume_ratio:.1f}배
 
 ─── 기술지표 ───
@@ -164,7 +164,7 @@ PER: {snap.per:.1f} | 외국인 보유율: {snap.foreigner_pct:.1f}%
                 return AIVerdict(
                     ticker=ticker, action="HOLD", confidence=0,
                     reason="AI response parse error",
-                    target_price=current_price, stop_loss=int(current_price * 0.97),
+                    target_price=current_price, stop_loss=round(current_price * 0.97, 2),
                     position_size="SMALL", raw_response=raw,
                 )
 
@@ -173,8 +173,8 @@ PER: {snap.per:.1f} | 외국인 보유율: {snap.foreigner_pct:.1f}%
             action        = data.get("action", "HOLD"),
             confidence    = int(data.get("confidence", 0)),
             reason        = data.get("reason", ""),
-            target_price  = int(data.get("target_price", current_price)),
-            stop_loss     = int(data.get("stop_loss", int(current_price * 0.97))),
+            target_price  = float(data.get("target_price", current_price)),
+            stop_loss     = float(data.get("stop_loss", current_price * 0.97)),
             position_size = data.get("position_size", "SMALL"),
             raw_response  = raw,
         )
@@ -203,7 +203,7 @@ PER: {snap.per:.1f} | 외국인 보유율: {snap.foreigner_pct:.1f}%
             ticker=snap.ticker, action="HOLD", confidence=50,
             reason="Mock 모드 — 실제 AI 판단 없음",
             target_price=snap.current_price,
-            stop_loss=int(snap.current_price * 0.97),
+            stop_loss=round(snap.current_price * 0.97, 2),
             position_size="SMALL",
         )
 
@@ -214,6 +214,6 @@ PER: {snap.per:.1f} | 외국인 보유율: {snap.foreigner_pct:.1f}%
             ticker=snap.ticker, action="HOLD", confidence=0,
             reason="API 오류로 인한 안전 HOLD",
             target_price=snap.current_price,
-            stop_loss=int(snap.current_price * 0.97),
+            stop_loss=round(snap.current_price * 0.97, 2),
             position_size="SMALL",
         )

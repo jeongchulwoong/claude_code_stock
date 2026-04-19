@@ -20,7 +20,7 @@ from typing import Literal, Optional
 
 from loguru import logger
 
-from config import AI_CONFIG, GEMINI_API_KEY, RISK_CONFIG
+from config import AI_CONFIG, GEMINI_API_KEY, RISK_CONFIG, fmt_price
 from core.data_collector import StockSnapshot
 from core.news_analyzer import NewsVerdict, StockNewsService
 
@@ -143,8 +143,8 @@ class IntegratedJudge:
             action          = base["action"],
             confidence      = final_conf,
             reason          = base["reason"],
-            target_price    = int(base.get("target_price", snap.current_price)),
-            stop_loss       = int(base.get("stop_loss", snap.current_price * 0.97)),
+            target_price    = float(base.get("target_price", snap.current_price)),
+            stop_loss       = float(base.get("stop_loss", snap.current_price * 0.97)),
             position_size   = base.get("position_size", "SMALL"),
             news_judgment   = news_v.judgment,
             news_score      = news_v.score,
@@ -181,7 +181,7 @@ class IntegratedJudge:
         except Exception as e:
             logger.error("통합 판단 Gemini 오류 [{}]: {}", snap.ticker, e)
             return {"action":"HOLD","confidence":0,"reason":"API 오류",
-                    "target_price":snap.current_price,"stop_loss":int(snap.current_price*0.97),"position_size":"SMALL"}
+                    "target_price":snap.current_price,"stop_loss":round(snap.current_price*0.97,2),"position_size":"SMALL"}
 
     @staticmethod
     def _build_prompt(snap: StockSnapshot, news_v: NewsVerdict) -> str:
@@ -189,7 +189,7 @@ class IntegratedJudge:
         key_pts = "\n".join(f"  • {p}" for p in news_v.key_points) if news_v.key_points else "  • 없음"
 
         return f"""
-종목: {snap.ticker} | 현재가: {snap.current_price:,}원
+종목: {snap.ticker} | 현재가: {fmt_price(snap.ticker, snap.current_price)}
 
 ━━━ 기술지표 ━━━
 RSI(14):      {snap.rsi:.1f}  {'⚠ 과매도' if snap.rsi<30 else '⚠ 과매수' if snap.rsi>70 else ''}
@@ -226,7 +226,7 @@ MA5/MA20:     {snap.ma5:,.0f} / {snap.ma20:,.0f}  ({'↑' if snap.ma5>snap.ma20 
             ticker="", action="HOLD", confidence=0,
             reason=f"뉴스 강한 악재로 매수 차단 — {news_v.reason[:80]}",
             target_price=snap.current_price,
-            stop_loss=int(snap.current_price * 0.97),
+            stop_loss=round(snap.current_price * 0.97, 2),
             position_size="SMALL",
             news_judgment=news_v.judgment, news_score=news_v.score,
             news_reason=news_v.reason, news_key_points=news_v.key_points,
@@ -242,7 +242,7 @@ MA5/MA20:     {snap.ma5:,.0f} / {snap.ma20:,.0f}  ({'↑' if snap.ma5>snap.ma20 
             "action":       action,
             "confidence":   random.randint(55, 88),
             "reason":       f"[Mock] RSI {snap.rsi:.1f} 기반 {action} 판단",
-            "target_price": int(snap.current_price * 1.06),
-            "stop_loss":    int(snap.current_price * 0.97),
+            "target_price": round(snap.current_price * 1.06, 2),
+            "stop_loss":    round(snap.current_price * 0.97, 2),
             "position_size":"MEDIUM",
         }

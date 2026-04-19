@@ -116,3 +116,14 @@ def get_scan_interval() -> int:
 
 # 하위 호환 — 기존 코드가 WATCH_LIST 를 직접 참조할 경우
 WATCH_LIST = get_watch_names()
+
+
+def fmt_price(ticker: str, price: float) -> str:
+    """ticker suffix에 따라 가격+통화 단위 포맷 (KRW·JPY·HKD·USD 지원)"""
+    if ticker.endswith(".KS") or ticker.endswith(".KQ"):
+        return f"{int(price):,}원"
+    if ticker.endswith(".T"):
+        return f"¥{int(price):,}"
+    if ticker.endswith(".HK"):
+        return f"HK${price:.2f}"
+    return f"${price:.2f}"
