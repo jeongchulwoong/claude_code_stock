@@ -84,8 +84,15 @@ class KiwoomWebSocket:
             return
 
         self._running = True
+        ws_fail_count = 0
 
         while self._running:
+            # WebSocket 3회 연속 실패 시 REST 폴링으로 전환
+            if ws_fail_count >= 3:
+                logger.warning("WebSocket 연결 불가 — REST API 폴링 모드로 전환 (5초 간격)")
+                await self._rest_polling_loop()
+                return
+
             try:
                 logger.info("토큰 발급 중...")
                 self._token = get_token()
@@ -99,15 +106,88 @@ class KiwoomWebSocket:
                         self._ws = ws
                         await self._login(ws)
                         await self._register(ws, self._tickers)
+                        ws_fail_count = 0  # 연결 성공 시 리셋
                         await self._recv_loop(ws)
             except TimeoutError:
-                logger.warning("WebSocket 연결 타임아웃 (서버 응답 없음) — 30초 후 재연결")
-                await asyncio.sleep(30)
+                ws_fail_count += 1
+                logger.warning("WebSocket 타임아웃 ({}/3) — 10초 후 재시도", ws_fail_count)
+                await asyncio.sleep(10)
             except RuntimeError as e:
-                logger.error("연결 오류: {} — 30초 후 재연결", e)
-                await asyncio.sleep(30)
+                ws_fail_count += 1
+                logger.error("연결 오류 ({}/3): {} — 10초 후 재시도", ws_fail_count, e)
+                await asyncio.sleep(10)
             except Exception as e:
-                logger.warning("WebSocket 연결 끊김: {} — 10초 후 재연결", e)
+                logger.warning("WebSocket 끊김: {} — 10초 후 재연결", e)
+                await asyncio.sleep(10)
+
+    async def _rest_polling_loop(self) -> None:
+        """WebSocket 불가 시 키움 REST API로 5초마다 시세 폴링"""
+        import requests
+        from config import API_CONFIG
+        appkey    = API_CONFIG["appkey"]
+        secretkey = API_CONFIG["secretkey"]
+        base_url  = "https://api.kiwoom.com"
+
+        def _get_token_once() -> str:
+            r = requests.post(
+                f"{base_url}/oauth2/token",
+                json={"grant_type": "client_credentials",
+                      "appkey": appkey, "secretkey": secretkey},
+                timeout=5,
+            )
+            body = r.json()
+            if body.get("return_code") != 0:
+                raise RuntimeError(body.get("return_msg"))
+            return body["token"]
+
+        def _fetch_price(code: str, token: str) -> dict | None:
+            try:
+                r = requests.get(
+                    f"{base_url}/uapi/domestic-stock/v1/quotations/inquire-price",
+                    headers={
+                        "authorization": f"Bearer {token}",
+                        "appkey": appkey,
+                        "secretkey": secretkey,
+                        "tr_id": "FHKST01010100",
+                    },
+                    params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+                    timeout=5,
+                )
+                out = r.json().get("output", {})
+                if not out:
+                    return None
+                price      = int(out.get("stck_prpr", 0))
+                prev_price = int(out.get("stck_bstp_ert", 0)) or price
+                change_pct = round((price - prev_price) / prev_price * 100, 2) if prev_price else 0.0
+                return {
+                    "ticker":     code,
+                    "time":       datetime.now().strftime("%H%M%S"),
+                    "price":      price,
+                    "change_pct": change_pct,
+                    "volume":     int(out.get("acml_vol", 0)),
+                }
+            except Exception:
+                return None
+
+        token = ""
+        token_ts = 0.0
+        while self._running:
+            try:
+                # 토큰 1시간마다 갱신
+                if datetime.now().timestamp() - token_ts > 3500:
+                    token = _get_token_once()
+                    token_ts = datetime.now().timestamp()
+                    logger.info("[REST폴링] 토큰 갱신 완료")
+
+                for code in self._tickers:
+                    tick = _fetch_price(code, token)
+                    if tick:
+                        self._on_tick(tick)
+                    await asyncio.sleep(0.2)  # API 호출 간격
+
+                await asyncio.sleep(5)
+            except Exception as e:
+                logger.warning("[REST폴링] 오류: {} — 10초 후 재시도", e)
                 await asyncio.sleep(10)
 
     async def _login(self, ws) -> None:
@@ -170,6 +250,12 @@ class KiwoomWebSocket:
         print(f"[{t['time']}] {t['ticker']} "
               f"현재가:{t['price']:,}  등락:{t['change_pct']}%  "
               f"거래량:{t['volume']:,}")
+        # 대시보드로 틱 전송
+        try:
+            import requests as _req
+            _req.post("http://127.0.0.1:5001/api/tick", json=tick, timeout=0.5)
+        except Exception:
+            pass
 
     def stop(self) -> None:
         self._running = False

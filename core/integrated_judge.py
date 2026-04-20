@@ -97,9 +97,8 @@ class IntegratedJudge:
         self._news_service = StockNewsService()
         self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            import google.generativeai as genai
-            genai.configure(api_key=GEMINI_API_KEY)
-            self._genai = genai
+            from google import genai
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
         else:
             logger.warning("Gemini API 키 없음 → Mock 모드로 작동")
 
@@ -123,15 +122,7 @@ class IntegratedJudge:
                 key_points=[], news_count=0, news_titles=[],
             )
 
-        # 2. 강한 악재 → 즉시 차단
-        if news_v.score <= -60:
-            logger.warning(
-                "뉴스 악재로 매수 차단: {} | score={} | {}",
-                snap.ticker, news_v.score, news_v.reason
-            )
-            return self._blocked_verdict(snap, news_v)
-
-        # 3. Claude 통합 판단
+        # 2. Claude 통합 판단 (뉴스 악재여도 AI가 직접 판단)
         if self._mock:
             base = self._mock_judge(snap)
         else:
@@ -169,14 +160,15 @@ class IntegratedJudge:
     def _claude_judge(self, snap: StockSnapshot, news_v: NewsVerdict) -> dict:
         prompt = self._build_prompt(snap, news_v)
         try:
-            model = self._genai.GenerativeModel('gemini-2.5-flash-lite')
-            resp = model.generate_content(
-                self._SYSTEM + "\n\n" + prompt,
-                generation_config={
-                    'temperature': 0,
-                    'max_output_tokens': AI_CONFIG["max_tokens"],
-                    'response_mime_type': 'application/json'
-                }
+            from google.genai import types as gtypes
+            resp = self._client.models.generate_content(
+                model='gemini-2.5-flash-lite-preview-06-17',
+                contents=self._SYSTEM + "\n\n" + prompt,
+                config=gtypes.GenerateContentConfig(
+                    temperature=0,
+                    max_output_tokens=AI_CONFIG["max_tokens"],
+                    response_mime_type='application/json',
+                ),
             )
             raw = resp.text.strip()
             # JSON 추출
@@ -231,21 +223,8 @@ MA5/MA20:     {snap.ma5:,.0f} / {snap.ma20:,.0f}  ({'↑' if snap.ma5>snap.ma20 
         if s >= 60:   return +10   # 강한 호재
         if s >= 30:   return +5    # 약한 호재
         if s <= -30:  return -15   # 약한 악재
-        if s <= -60:  return -25   # 강한 악재 (이미 차단됐지만 SELL에는 적용)
+        if s <= -60:  return -25   # 강한 악재
         return 0                   # 중립
-
-    @staticmethod
-    def _blocked_verdict(snap: StockSnapshot, news_v: NewsVerdict) -> IntegratedVerdict:
-        return IntegratedVerdict(
-            ticker="", action="HOLD", confidence=0,
-            reason=f"뉴스 강한 악재로 매수 차단 — {news_v.reason[:80]}",
-            target_price=snap.current_price,
-            stop_loss=round(snap.current_price * 0.97, 2),
-            position_size="SMALL",
-            news_judgment=news_v.judgment, news_score=news_v.score,
-            news_reason=news_v.reason, news_key_points=news_v.key_points,
-            confidence_adj=0, news_blocked=True,
-        )
 
     @staticmethod
     def _mock_judge(snap: StockSnapshot) -> dict:

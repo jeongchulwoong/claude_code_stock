@@ -337,6 +337,20 @@ socket.on('ai_log', data => {
   document.getElementById('ai-panel').innerHTML = html || '<p style="color:var(--text3);font-size:12px;padding:8px">로그 없음</p>';
 });
 
+// ── 실시간 주가 틱 ──
+const _priceMap = {};
+socket.on('price_tick', t => {
+  _priceMap[t.ticker] = t;
+  const el = document.getElementById('price-' + t.ticker);
+  if (el) {
+    el.innerHTML = `<b>${t.price.toLocaleString()}원</b> <span style="color:${t.change_pct>=0?'#27500A':'#A32D2D'}">${t.change_pct>=0?'+':''}${t.change_pct}%</span>`;
+  }
+  addFeed(t.change_pct>=0?'📈':'📉', t.ticker, `${t.price.toLocaleString()}원 (${t.change_pct>=0?'+':''}${t.change_pct}%)`);
+});
+socket.on('price_snapshot', list => {
+  list.forEach(t => { _priceMap[t.ticker] = t; });
+});
+
 // ── 실시간 이벤트 피드 ──
 socket.on('new_event', evt => { addFeed(evt.icon, evt.ticker, evt.message); });
 
@@ -368,20 +382,37 @@ def on_connect():
     emit("ai_log",       get_ai_judge_log())
 
 
+# ── 실시간 주가 캐시 (kiwoom_ws → 대시보드) ──
+_price_cache: dict[str, dict] = {}  # ticker → {price, change_pct, volume, ts}
+
+def update_price(tick: dict) -> None:
+    """kiwoom_ws 콜백: 틱 데이터를 캐시에 저장하고 브로드캐스트"""
+    _price_cache[tick["ticker"]] = tick
+    sio.emit("price_tick", tick)
+
+
+def get_price_snapshot() -> list[dict]:
+    return list(_price_cache.values())
+
+
 # ── 백그라운드 브로드캐스터 ───────────────────
 
 def _broadcast_loop():
-    """5초마다 모든 클라이언트에 최신 데이터를 push한다."""
+    """3초마다 모든 클라이언트에 최신 데이터를 push한다."""
     while True:
-        time.sleep(5)
+        time.sleep(3)
         try:
-            sio.emit("summary",      get_summary_stats())
-            sio.emit("pnl_data",     get_daily_pnl())
-            sio.emit("ticker_stats", get_ticker_stats())
-            sio.emit("orders",       get_orders(limit=50))
-            sio.emit("ai_log",       get_ai_judge_log())
+            sio.emit("summary",        get_summary_stats())
+            sio.emit("pnl_data",       get_daily_pnl())
+            sio.emit("ticker_stats",   get_ticker_stats())
+            sio.emit("orders",         get_orders(limit=50))
+            sio.emit("ai_log",         get_ai_judge_log())
+            if _price_cache:
+                sio.emit("price_snapshot", get_price_snapshot())
         except Exception:
             pass
+
+
 
 
 # ── 라우트 ────────────────────────────────────
@@ -398,16 +429,37 @@ def health():
                     "time": datetime.now().isoformat()})
 
 
+@app.route("/api/tick", methods=["POST"])
+def api_tick():
+    """kiwoom_ws.py 에서 틱 데이터를 POST로 수신"""
+    from flask import request, jsonify
+    tick = request.get_json(silent=True)
+    if tick:
+        update_price(tick)
+    return jsonify({"ok": True})
+
+
 # ── 진입점 ────────────────────────────────────
 
 if __name__ == "__main__":
     t = threading.Thread(target=_broadcast_loop, daemon=True)
     t.start()
+    import socket
+    ips = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            ip = info[4][0]
+            if ip.startswith(("192.", "172.", "10.")) and ":" not in ip:
+                ips.append(ip)
+    except Exception:
+        pass
     print("\n" + "="*55)
     print("  🤖 AI 주식 실시간 대시보드 (WebSocket)")
-    print("  http://0.0.0.0:5001")
-    print("  외부 접속: http://192.168.45.201:5001")
-    print("  5초마다 전체 데이터 자동 push")
+    print("  로컬: http://127.0.0.1:5001")
+    for ip in set(ips):
+        if ip.startswith("172.16.8."):
+            print(f"  외부: http://{ip}:5001")
+    print("  3초마다 전체 데이터 자동 push")
     print("="*55 + "\n")
 
     # eventlet 또는 gevent 사용 권장 (외부 접속 안정성)

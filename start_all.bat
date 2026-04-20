@@ -16,9 +16,6 @@ timeout /t 2 > nul
 start "Stock Watcher" cmd /k "cd /d %BASE% && %PYTHON% scripts\fetch_real_stocks.py --watch --interval 30"
 timeout /t 2 > nul
 
-start "Foreign Scheduler" cmd /k "cd /d %BASE% && %PYTHON% foreign\scheduler.py --interval 30"
-timeout /t 2 > nul
-
 start "Realtime WebSocket" cmd /k "cd /d %BASE% && %PYTHON% core\kiwoom_ws.py"
 
 echo.

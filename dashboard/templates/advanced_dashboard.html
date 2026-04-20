@@ -93,6 +93,7 @@ tr:hover td{background:#faf9f6}
   <div class="tab" onclick="switchTab('screener')">📡 스크리너</div>
   <div class="tab" onclick="switchTab('strategies')">🏆 전략 성과</div>
   <div class="tab" onclick="switchTab('orders')">📋 주문 내역</div>
+  <div class="tab" onclick="switchTab('domestic')">🏠 국내주식</div>
   <div class="tab" onclick="switchTab('foreign')">🌐 해외주식</div>
   <div class="tab" onclick="switchTab('config')">⚙️ 설정</div>
 </div>
@@ -177,9 +178,50 @@ tr:hover td{background:#faf9f6}
   </div>
 </div>
 
-<!-- ⑥ 해외주식 탭 -->
+<!-- ⑥ 국내주식 탭 -->
+<div id="tab-domestic" class="panel">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+    <div class="ch" style="margin:0">🏠 국내주식 스크리닝 결과 (50점 이상)</div>
+    <button onclick="runScreener()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:11px">🔄 재실행</button>
+  </div>
+  <div id="domestic-grid" class="g4"></div>
+</div>
+
+<!-- ⑦ 해외주식 탭 -->
 <div id="tab-foreign" class="panel">
-  <div class="g4" id="foreign-cards"></div>
+  <div class="g2">
+    <!-- 왼쪽: 감시 종목 관리 -->
+    <div class="card">
+      <div class="ch">📋 해외 감시 종목 관리</div>
+      <div style="margin-bottom:10px;display:flex;gap:8px">
+        <input id="foreign-stock-search" placeholder="종목명 검색..." list="foreign-stock-list"
+          style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        <datalist id="foreign-stock-list"></datalist>
+        <button onclick="addForeignStock()"
+          style="padding:6px 14px;border-radius:6px;border:1px solid var(--blue);background:var(--bBg);color:var(--blue);cursor:pointer;font-size:12px">추가</button>
+      </div>
+      <div id="foreign-watch-list" style="max-height:320px;overflow-y:auto"></div>
+      <div style="margin-top:12px;text-align:right">
+        <button onclick="saveForeignWatchList()"
+          style="padding:7px 20px;border-radius:6px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:12px;font-weight:500">저장</button>
+      </div>
+      <div id="foreign-save-msg" style="margin-top:8px;font-size:11px;color:var(--green);display:none">저장됐습니다.</div>
+    </div>
+    <!-- 오른쪽: AI 분석 결과 -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="ch" style="margin:0">🤖 AI 분석 결과</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;color:var(--text3)" id="foreign-updated"></span>
+          <button onclick="runForeignAI()" id="foreign-btn"
+            style="padding:6px 14px;border-radius:6px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:11px;font-weight:500">
+            🤖 AI 분석 실행
+          </button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="foreign-cards"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ⑦ 설정 탭 -->
@@ -227,7 +269,8 @@ function switchTab(t){
   if(t==='strategies') loadStrategies();
   if(t==='orders') loadFullOrders();
   if(t==='portfolio') loadPortfolio();
-  if(t==='foreign') loadForeign();
+  if(t==='domestic') loadDomestic();
+  if(t==='foreign'){loadForeign();loadForeignWatchList();}
   if(t==='config') loadConfig();
 }
 
@@ -452,22 +495,107 @@ async function loadForeign(){
   try{
     const data=await fetch('/api/foreign_signals').then(r=>r.json());
     const g=document.getElementById('foreign-cards');
-    if(!data.length){g.innerHTML='<p style="color:var(--text3)">신호 없음 — 스케줄러를 실행하세요</p>';return;}
-    g.innerHTML=data.slice(0,8).map(d=>{
-      const jIcon={'호재':'🟢','악재':'🔴','중립':'⚪','BUY':'📈','SELL':'📉','HOLD':'⏸'}[d.action]||'⚪';
+    if(!data.length){g.innerHTML='<p style="color:var(--text3)">신호 없음 — 🤖 AI 분석 실행 버튼을 눌러주세요</p>';return;}
+    const latest=data[0]?.generated_at;
+    if(latest){
+      const dt=new Date(latest);
+      document.getElementById('foreign-updated').textContent='마지막 분석: '+dt.toLocaleString('ko-KR');
+    }
+    g.innerHTML=data.map(d=>{
+      const jIcon={'BUY':'📈','SELL':'📉','HOLD':'⏸'}[d.action]||'⚪';
       const pc=d.change_pct>=0?'var(--green)':'var(--red)';
+      const confColor=d.confidence>=75?'var(--green)':d.confidence>=60?'var(--text2)':'var(--text3)';
       return `<div class="card">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
           <b style="font-size:13px">${d.ticker}</b>
           <span class="badge ${d.action==='BUY'?'b-buy':d.action==='SELL'?'b-sell':'b-hold'}">${jIcon} ${d.action}</span>
         </div>
-        <div style="font-size:16px;font-weight:500">${(d.current_price||0).toFixed(2)}</div>
+        <div style="font-size:16px;font-weight:500">$${(d.current_price||0).toFixed(2)}</div>
         <div style="font-size:11px;color:${pc}">${(d.change_pct||0)>=0?'+':''}${(d.change_pct||0).toFixed(2)}%</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:6px">${d.reason||''}</div>
-        <div style="font-size:10px;font-weight:500;margin-top:4px">신뢰도: ${d.confidence||0}점</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.4">${d.reason||''}</div>
+        <div style="font-size:11px;font-weight:600;margin-top:4px;color:${confColor}">신뢰도: ${d.confidence||0}점</div>
       </div>`;
     }).join('');
   }catch(e){document.getElementById('foreign-cards').innerHTML='<p style="color:var(--text3)">로드 실패</p>';}
+}
+
+async function runForeignAI(){
+  const btn=document.getElementById('foreign-btn');
+  btn.disabled=true; btn.textContent='⏳ 분석 중...';
+  try{
+    const r=await fetch('/api/run_foreign_ai').then(res=>res.json());
+    if(r.ok){await loadForeign();}
+    else{alert('오류: '+(r.error||'알 수 없는 오류'));}
+  }catch(e){alert('실행 실패: '+e);}
+  btn.disabled=false; btn.textContent='🤖 AI 분석 실행';
+}
+
+// ── 국내주식 스크리너 ──
+async function loadDomestic(){
+  const data=await fetch('/api/screener?market=domestic').then(r=>r.json());
+  const g=document.getElementById('domestic-grid');
+  if(!data.length){g.innerHTML='<p style="color:var(--text3)">국내 스크리닝 결과 없음</p>';return;}
+  g.innerHTML=data.map(d=>{
+    const score=Math.min(d.score,100);
+    const icon=score>=60?'🔥':score>=40?'⭐':'🔹';
+    const reasons=(d.reasons||[]).slice(0,2).join(' · ');
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><b style="font-size:12px">${d.name||d.ticker}</b><span style="font-size:10px;color:var(--text3);margin-left:4px">${d.ticker}</span></div>
+        <span class="badge b-hot">${icon} ${score.toFixed(0)}점</span>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">${fmtPrice(d.ticker,d.price)}</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${reasons}</div>
+      <div class="score-bar"><div class="score-fill" style="width:${score}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── 해외 감시 종목 ──
+let _foreignWatchNames = [];
+let _allForeignStocks = [];
+
+async function loadForeignWatchList(){
+  const data = await fetch('/api/foreign_watchlist').then(r=>r.json());
+  _foreignWatchNames = [...data.watch_names];
+  _allForeignStocks = data.all_stocks;
+  const dl = document.getElementById('foreign-stock-list');
+  if(dl) dl.innerHTML = _allForeignStocks.map(n=>`<option value="${n}">`).join('');
+  renderForeignWatchList();
+}
+
+function renderForeignWatchList(){
+  document.getElementById('foreign-watch-list').innerHTML = _foreignWatchNames.map((name,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border2)">
+      <span style="flex:1;font-size:12px">${name}</span>
+      <button onclick="removeForeignStock(${i})"
+        style="padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:11px;color:var(--red)">삭제</button>
+    </div>`).join('');
+}
+
+function addForeignStock(){
+  const val = document.getElementById('foreign-stock-search').value.trim();
+  if(!val || _foreignWatchNames.includes(val)) return;
+  if(!_allForeignStocks.includes(val)){alert('목록에 없는 종목입니다.');return;}
+  _foreignWatchNames.push(val);
+  renderForeignWatchList();
+  document.getElementById('foreign-stock-search').value='';
+}
+
+function removeForeignStock(i){
+  _foreignWatchNames.splice(i,1);
+  renderForeignWatchList();
+}
+
+async function saveForeignWatchList(){
+  await fetch('/api/foreign_watchlist',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({foreign_watch_names:_foreignWatchNames})
+  });
+  const m=document.getElementById('foreign-save-msg');
+  m.style.display='block';
+  setTimeout(()=>m.style.display='none',2500);
 }
 
 // ── 설정 탭 ──

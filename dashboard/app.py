@@ -124,11 +124,12 @@ def api_strategy_stats():
 @app.route("/api/screener")
 def api_screener():
     import sqlite3
+    market = request.args.get("market", "all")  # all | domestic | foreign
     try:
         with sqlite3.connect(DB_PATH) as con:
             rows = con.execute(
                 "SELECT ticker, name, price, score, reasons, screened_at "
-                "FROM screener_results ORDER BY screened_at DESC, score DESC LIMIT 20"
+                "FROM screener_results ORDER BY screened_at DESC, score DESC LIMIT 500"
             ).fetchall()
         def parse_reasons(raw):
             if not raw:
@@ -137,11 +138,23 @@ def api_screener():
                 return json.loads(raw)
             except Exception:
                 return [s.strip() for s in raw.split(",") if s.strip()]
-        return jsonify([{
-            "ticker": r[0], "name": r[1], "price": r[2],
-            "score": r[3], "reasons": parse_reasons(r[4]),
-            "screened_at": r[5]
-        } for r in rows])
+        results = []
+        for r in rows:
+            ticker = r[0]
+            score = r[3] or 0
+            if score < 50:
+                continue
+            is_domestic = ticker.endswith(".KS") or ticker.endswith(".KQ")
+            if market == "domestic" and not is_domestic:
+                continue
+            if market == "foreign" and is_domestic:
+                continue
+            results.append({
+                "ticker": ticker, "name": r[1], "price": r[2],
+                "score": score, "reasons": parse_reasons(r[4]),
+                "screened_at": r[5]
+            })
+        return jsonify(results)
     except Exception:
         return jsonify([])
 
@@ -213,6 +226,40 @@ def api_alerts():
         } for r in rows])
     except Exception:
         return jsonify([])
+
+@app.route("/api/foreign_watchlist", methods=["GET"])
+def api_foreign_watchlist_get():
+    import config as cfg
+    from stock_universe import FOREIGN
+    return jsonify({
+        "watch_names": cfg.get_foreign_watch_names(),
+        "all_stocks":  list(FOREIGN.keys()),
+    })
+
+@app.route("/api/foreign_watchlist", methods=["POST"])
+def api_foreign_watchlist_post():
+    import config as cfg
+    from stock_universe import FOREIGN
+    data = request.get_json(force=True)
+    current = cfg._load_user_config()
+    if "foreign_watch_names" in data:
+        valid = [n for n in data["foreign_watch_names"] if n in FOREIGN]
+        current["foreign_watch_names"] = valid
+    cfg._save_user_config(current)
+    return jsonify({"ok": True})
+
+@app.route("/api/run_foreign_ai")
+def api_run_foreign_ai():
+    try:
+        import subprocess, sys
+        script = str(Path(__file__).parent.parent / "scripts" / "generate_foreign_signals_ai.py")
+        proc = subprocess.Popen(
+            [sys.executable, script],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return jsonify({"ok": True, "pid": proc.pid})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 # ── Config API ────────────────────────────────
 

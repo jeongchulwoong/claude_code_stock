@@ -177,6 +177,14 @@ def get_long_watch_names() -> list[str]:
     ]
     return _load_user_config().get("long_watch_names", _DEFAULT_LONG)
 
+def get_foreign_watch_names() -> list[str]:
+    _DEFAULT_FOREIGN_WATCH = [
+        "Apple", "Microsoft", "NVIDIA", "Alphabet", "Amazon",
+        "Meta", "Tesla", "Netflix", "Broadcom", "AMD",
+        "TSMC ADR", "JPMorgan", "Visa", "Eli Lilly", "Costco",
+    ]
+    return _load_user_config().get("foreign_watch_names", _DEFAULT_FOREIGN_WATCH)
+
 # 하위 호환 — 기존 코드가 WATCH_LIST 를 직접 참조할 경우
 WATCH_LIST      = get_watch_names()
 WATCH_LIST_LONG = get_long_watch_names()
