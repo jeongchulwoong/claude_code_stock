@@ -129,7 +129,9 @@ def api_screener():
         with sqlite3.connect(DB_PATH) as con:
             rows = con.execute(
                 "SELECT ticker, name, price, score, reasons, screened_at "
-                "FROM screener_results ORDER BY screened_at DESC, score DESC LIMIT 500"
+                "FROM screener_results WHERE rowid IN ("
+                "  SELECT MAX(rowid) FROM screener_results GROUP BY ticker"
+                ") ORDER BY score DESC, screened_at DESC LIMIT 500"
             ).fetchall()
         def parse_reasons(raw):
             if not raw:
