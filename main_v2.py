@@ -155,6 +155,7 @@ def main():
     last_hot_scan       = 0.0   # 70점 알림 마지막 스캔 시각
     hot_alert_interval  = 30 * 60                                          # 30분마다 재스캔
     _alerted_today: set[str] = set()                                       # 당일 이미 알림 보낸 종목
+    _alert_date: str    = ""                                               # 알림 목록 날짜 추적
 
     # 로그인 + 텔레그램 시작
     try:
@@ -241,6 +242,40 @@ def main():
         if not is_close_window():
             daily_reported = False
 
+        # ─ 24시간 국내+해외 70점 모니터링 (장 내외 무관) ─
+        if time.time() - last_hot_scan >= hot_alert_interval:
+            last_hot_scan = time.time()
+            today_str = now.strftime("%Y-%m-%d")
+            if _alert_date != today_str:
+                _alerted_today.clear()
+                _alert_date = today_str
+
+            from stock_universe import FOREIGN as _FOREIGN
+            from config import get_foreign_watch_names as _get_fw
+            _fw_names = _get_fw()
+            _full_universe = list(WATCH_LIST) + _fw_names
+            logger.info("── 전종목 70점 모니터링 ({}) | 국내{}+해외{} ──",
+                        now.strftime("%H:%M"), len(WATCH_LIST), len(_fw_names))
+
+            hot_result = screener.run(universe=_full_universe, use_mock=False, min_score=60.0)
+            new_alerts = [c for c in hot_result.candidates
+                          if c.score >= 70 and c.ticker not in _alerted_today]
+            for c in new_alerts:
+                _alerted_today.add(c.ticker)
+                is_kr = c.ticker.endswith(".KS") or c.ticker.endswith(".KQ")
+                price_str = f"{int(c.current_price):,}원" if is_kr else f"${c.current_price:.2f}"
+                market_tag = "🇰🇷 국내" if is_kr else "🌐 해외"
+                tg.notify_text(
+                    f"🚨 매수 신호 포착! {market_tag}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"종목: {c.name} ({c.ticker})\n"
+                    f"점수: {c.score:.0f}점 🔥\n"
+                    f"가격: {price_str}\n"
+                    f"근거: {' · '.join(c.reasons[:3])}\n"
+                    f"⏰ {now.strftime('%H:%M:%S')}"
+                )
+                logger.info("🚨 70점 알림: {} | {:.0f}점 ({})", c.ticker, c.score, market_tag)
+
         if not is_market():
             logger.debug("장 외 시간 ({})", now.strftime("%H:%M"))
             time.sleep(60)
@@ -265,35 +300,9 @@ def main():
             tg.notify_text(screener.to_telegram(scr_result))
             for alert_msg in screener.hot_alerts(scr_result, threshold=70.0):
                 tg.notify_text(alert_msg)
-            _alerted_today = {c.ticker for c in scr_result.candidates if c.score >= 70}
-            last_hot_scan = time.time()
-
-        # ─ 70점 이상 종목 실시간 모니터링 (30분마다) ─
-        if time.time() - last_hot_scan >= hot_alert_interval:
-            last_hot_scan = time.time()
-            # 날짜가 바뀌면 알림 목록 초기화
-            if now.strftime("%Y-%m-%d") != getattr(_alerted_today, '_date', now.strftime("%Y-%m-%d")):
-                _alerted_today.clear()
-            logger.info("── 70점 모니터링 스캔 ({}) ──", now.strftime("%H:%M"))
-            hot_result = screener.run(universe=WATCH_LIST, use_mock=False, min_score=60.0)
-            new_alerts = [
-                c for c in hot_result.candidates
-                if c.score >= 70 and c.ticker not in _alerted_today
-            ]
-            for c in new_alerts:
-                _alerted_today.add(c.ticker)
-                is_kr = c.ticker.endswith(".KS") or c.ticker.endswith(".KQ")
-                price_str = f"{int(c.current_price):,}원" if is_kr else f"${c.current_price:.2f}"
-                tg.notify_text(
-                    f"🚨 매수 신호 포착!\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"종목: {c.name} ({c.ticker})\n"
-                    f"점수: {c.score:.0f}점 🔥\n"
-                    f"가격: {price_str}\n"
-                    f"근거: {' · '.join(c.reasons[:3])}\n"
-                    f"⏰ {now.strftime('%H:%M:%S')}"
-                )
-                logger.info("🚨 70점 알림 전송: {} | {:.0f}점", c.ticker, c.score)
+            for c in scr_result.candidates:
+                if c.score >= 70:
+                    _alerted_today.add(c.ticker)
 
         # ─ 포지션 손절·익절 체크 ─
         for ticker, pos in list(rm.get_positions().items()):
