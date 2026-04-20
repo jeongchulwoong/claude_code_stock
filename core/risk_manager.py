@@ -43,6 +43,11 @@ class Position:
     avg_price:   float
     style:       str  = STYLE_DAY            # "daytrading" | "longterm"
     entry_date:  date = field(default_factory=date.today)
+    high_price:  float = 0.0                 # 보유 중 최고가 (트레일링 스탑용)
+
+    def __post_init__(self):
+        if self.high_price == 0.0:
+            self.high_price = self.avg_price
 
     @property
     def invested_amount(self) -> float:
@@ -126,18 +131,39 @@ class RiskManager:
         return RiskCheckResult(True, "매도 가능", qty=pos.qty)
 
     def check_stop_loss(self, ticker: str, current_price: float) -> bool:
-        """포지션 스타일에 맞는 손절선 비교"""
+        """손절선 + 트레일링 스탑 비교 (단타 전용)"""
         if ticker not in self._positions:
             return False
         pos = self._positions[ticker]
         cfg = self._cfg if pos.style == STYLE_DAY else self._cfg_long
+
+        # 고점 갱신
+        if current_price > pos.high_price:
+            pos.high_price = current_price
+
         pnl_pct = (current_price - pos.avg_price) / pos.avg_price
+
+        # 일반 손절
         if pnl_pct <= cfg["stop_loss_pct"]:
             logger.warning(
                 "손절 발동 [{}] {}: 진입:{:.2f} → 현재:{:.2f} | {:.2%}",
                 pos.style, ticker, pos.avg_price, current_price, pnl_pct,
             )
             return True
+
+        # 트레일링 스탑 (단타 전용, +2% 도달 후 고점 대비 -1.5%)
+        if pos.style == STYLE_DAY:
+            trail_start = cfg.get("trailing_start_pct", 0.02)
+            trail_stop  = cfg.get("trailing_stop_pct",  0.015)
+            peak_pnl = (pos.high_price - pos.avg_price) / pos.avg_price
+            drop_from_peak = (pos.high_price - current_price) / pos.high_price
+            if peak_pnl >= trail_start and drop_from_peak >= trail_stop:
+                logger.info(
+                    "트레일링 스탑 [{}]: 고점:{:.2f} → 현재:{:.2f} | 낙폭:{:.2%}",
+                    ticker, pos.high_price, current_price, drop_from_peak,
+                )
+                return True
+
         return False
 
     def check_take_profit(self, ticker: str, current_price: float) -> bool:

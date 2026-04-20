@@ -325,41 +325,66 @@ def main():
                 f"손절:{_fmt_price(snap.ticker, sizing.stop_loss)}({sizing.stop_loss_pct:.1f}%)"
             )
 
-        for name in WATCH_LIST:
-            if not _running or name in rm.get_positions():
-                continue
+        # ─ 단타 신규 진입: 시간 필터 ─
+        _entry_start = dtime(*map(int, RISK_CONFIG.get("entry_start", "09:40").split(":")))
+        _entry_end   = dtime(*map(int, RISK_CONFIG.get("entry_end",   "14:30").split(":")))
+        _in_entry_window = _entry_start <= now.time() <= _entry_end
+
+        if not _in_entry_window:
+            logger.debug("[단타] 진입 시간 외 ({}) — 신규 매수 없음", now.strftime("%H:%M"))
+
+        if _in_entry_window:
+            # ─ KOSPI 방향 필터 ─
+            _kospi_ok = True
             try:
-                snap = dc.get_snapshot(name)
-            except Exception as e:
-                logger.error("[단타][{}] 수집 실패: {}", name, e); continue
+                import yfinance as _yf
+                _ki = _yf.Ticker("^KS11").fast_info
+                _kospi_chg = (_ki.last_price - _ki.previous_close) / _ki.previous_close
+                if _kospi_chg < RISK_CONFIG.get("kospi_min_change", -0.01):
+                    _kospi_ok = False
+                    logger.warning("[단타] KOSPI 급락({:.2%}) — 신규 매수 중단", _kospi_chg)
+            except Exception:
+                pass
 
-            # 단타는 한국 주식만 거래 (안전장치)
-            from stock_universe import is_domestic
-            if not is_domestic(snap.ticker):
-                logger.warning("[단타] 해외 주식 스킵: {} (단타는 한국 주식만)", snap.ticker)
-                continue
+        if _in_entry_window and _kospi_ok:
+            for name in WATCH_LIST:
+                if not _running or name in rm.get_positions():
+                    continue
+                try:
+                    snap = dc.get_snapshot(name)
+                except Exception as e:
+                    logger.error("[단타][{}] 수집 실패: {}", name, e); continue
 
-            am.check(snap)
-            active_strategy = next((s for s in strategies if s.should_enter(snap)), None)
-            if not active_strategy:
-                continue
+                from stock_universe import is_domestic
+                if not is_domestic(snap.ticker):
+                    continue
 
-            verdict = int_judge.judge(snap, fetch_news=True)
-            verdict.ticker = snap.ticker
-            tracker.record_signal(active_strategy.name, snap.ticker, verdict.action,
-                                  verdict.confidence, snap.current_price,
-                                  verdict.is_executable, verdict.reason)
-            logger.info("[단타] {} | {}", active_strategy.name, verdict.summary_line)
+                am.check(snap)
 
-            if verdict.news_blocked:
-                tg.notify_text(f"⛔ 뉴스 차단(단타): {snap.ticker} | "
-                               f"{verdict.news_judgment}({verdict.news_score:+d}점)\n"
-                               f"{verdict.news_reason[:80]}")
-                continue
-            if not verdict.is_executable:
-                continue
+                # 전략 다중 확인 — min_strategies 개 이상 통과해야 진입
+                _min_st = RISK_CONFIG.get("min_strategies", 2)
+                _passed = [s for s in strategies if s.should_enter(snap)]
+                if len(_passed) < _min_st:
+                    continue
+                active_strategy = _passed[0]
 
-            _execute_entry(snap, verdict, active_strategy, STYLE_DAY)
+                verdict = int_judge.judge(snap, fetch_news=True)
+                verdict.ticker = snap.ticker
+                tracker.record_signal(active_strategy.name, snap.ticker, verdict.action,
+                                      verdict.confidence, snap.current_price,
+                                      verdict.is_executable, verdict.reason)
+                strat_names = "+".join(s.name for s in _passed)
+                logger.info("[단타] {}개전략({}) | {}", len(_passed), strat_names, verdict.summary_line)
+
+                if verdict.news_blocked:
+                    tg.notify_text(f"⛔ 뉴스 차단(단타): {snap.ticker} | "
+                                   f"{verdict.news_judgment}({verdict.news_score:+d}점)\n"
+                                   f"{verdict.news_reason[:80]}")
+                    continue
+                if not verdict.is_executable:
+                    continue
+
+                _execute_entry(snap, verdict, active_strategy, STYLE_DAY)
 
         # ─ 장투 신규 진입 스캔 (30분마다) ─
         if time.time() - last_long_scan >= long_interval:
