@@ -97,8 +97,11 @@ class IntegratedJudge:
         self._news_service = StockNewsService()
         self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            from google import genai
-            self._client = genai.Client(api_key=GEMINI_API_KEY)
+            import google.generativeai as genai
+            genai.configure(api_key=GEMINI_API_KEY)
+            self._genai = genai
+        else:
+            logger.warning("Gemini API 키 없음 → Mock 모드로 작동")
 
     def judge(
         self,
@@ -166,20 +169,31 @@ class IntegratedJudge:
     def _claude_judge(self, snap: StockSnapshot, news_v: NewsVerdict) -> dict:
         prompt = self._build_prompt(snap, news_v)
         try:
-            from google.genai import types as gtypes
-            resp = self._client.models.generate_content(
-                model    = AI_CONFIG["model"],
-                contents = self._SYSTEM + "\n\n" + prompt,
-                config   = gtypes.GenerateContentConfig(
-                    temperature=0, max_output_tokens=AI_CONFIG["max_tokens"]
-                ),
+            model = self._genai.GenerativeModel('gemini-2.5-flash-lite')
+            resp = model.generate_content(
+                self._SYSTEM + "\n\n" + prompt,
+                generation_config={
+                    'temperature': 0,
+                    'max_output_tokens': AI_CONFIG["max_tokens"],
+                    'response_mime_type': 'application/json'
+                }
             )
-            raw = resp.text
+            raw = resp.text.strip()
+            # JSON 추출
             clean = re.sub(r"```json|```", "", raw).strip()
             m = re.search(r"\{.*\}", clean, re.DOTALL)
-            return json.loads(m.group(0) if m else clean)
+            if m:
+                result = json.loads(m.group(0))
+            else:
+                result = json.loads(clean)
+
+            # 필수 필드 검증
+            if "action" not in result:
+                raise ValueError("action 필드 없음")
+
+            return result
         except Exception as e:
-            logger.error("통합 판단 Gemini 오류 [{}]: {}", snap.ticker, e)
+            logger.error("통합 판단 Gemini 오류 [{}]: {} | 응답: {}", snap.ticker, e, raw[:200] if 'raw' in locals() else 'N/A')
             return {"action":"HOLD","confidence":0,"reason":"API 오류",
                     "target_price":snap.current_price,"stop_loss":round(snap.current_price*0.97,2),"position_size":"SMALL"}
 

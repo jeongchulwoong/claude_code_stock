@@ -405,7 +405,16 @@ if __name__ == "__main__":
     t.start()
     print("\n" + "="*55)
     print("  🤖 AI 주식 실시간 대시보드 (WebSocket)")
-    print("  http://localhost:5001")
+    print("  http://0.0.0.0:5001")
+    print("  외부 접속: http://192.168.45.201:5001")
     print("  5초마다 전체 데이터 자동 push")
     print("="*55 + "\n")
-    sio.run(app, host="0.0.0.0", port=5001, debug=False, allow_unsafe_werkzeug=True)
+
+    # eventlet 또는 gevent 사용 권장 (외부 접속 안정성)
+    try:
+        import eventlet
+        eventlet.monkey_patch()
+        sio.run(app, host="0.0.0.0", port=5001, debug=False)
+    except ImportError:
+        # eventlet 없으면 기본 모드
+        sio.run(app, host="0.0.0.0", port=5001, debug=False, allow_unsafe_werkzeug=True)

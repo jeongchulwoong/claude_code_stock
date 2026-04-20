@@ -178,15 +178,19 @@ class MarketScreener:
         elif rsi < 35:
             score += 20; reasons.append(f"RSI 과매도({rsi:.1f})")
         elif rsi < 45:
-            score += 10; reasons.append(f"RSI 낮음({rsi:.1f})")
+            score += 15; reasons.append(f"RSI 낮음({rsi:.1f})")
+        elif rsi < 52:
+            score += 8;  reasons.append(f"RSI neutral-low({rsi:.0f})")
 
         # 거래량 급등
         if vol_ratio >= 4.0:
             score += 25; reasons.append(f"거래량 폭등({vol_ratio:.1f}배)")
         elif vol_ratio >= 2.5:
             score += 18; reasons.append(f"거래량 급등({vol_ratio:.1f}배)")
-        elif vol_ratio >= 1.8:
-            score += 10; reasons.append(f"거래량 증가({vol_ratio:.1f}배)")
+        elif vol_ratio >= 1.5:
+            score += 12; reasons.append(f"거래량 증가({vol_ratio:.1f}배)")
+        elif vol_ratio >= 1.2:
+            score += 5;  reasons.append(f"거래량 소폭증가({vol_ratio:.1f}배)")
 
         # MACD 골든크로스
         if macd_cross:
@@ -195,6 +199,8 @@ class MarketScreener:
         # 볼린저밴드
         if bb_pos == "lower":
             score += 15; reasons.append("볼린저밴드 하단")
+        elif bb_pos == "middle":
+            score += 5;  reasons.append("볼린저밴드 중단")
         elif bb_pos == "upper":
             score -= 10  # 과매수 구간 패널티
 
@@ -208,9 +214,11 @@ class MarketScreener:
         # 스토캐스틱
         if stoch_k < 20:
             score += 10; reasons.append(f"스토캐스틱 과매도({stoch_k:.1f})")
+        elif stoch_k < 40:
+            score += 5;  reasons.append(f"스토캐스틱 낮음({stoch_k:.1f})")
 
-        # 최소 2개 이상 조건 충족 요구
-        if len(reasons) < 2:
+        # 최소 1개 이상 조건 충족 요구
+        if len(reasons) < 1:
             return None
 
         # snap.ticker는 resolve() 후 실제 코드(예: "005930.KS", "NKE")

@@ -81,7 +81,7 @@ tr:hover td{background:#faf9f6}
   <div class="hdr-right">
     <span style="font-size:11px;color:var(--text3)" id="ws-label">연결 중...</span>
     <div class="ws-dot" id="ws-dot"></div>
-    <span class="badge b-hold">📄 PAPER</span>
+    <span class="badge b-hold" id="mode-badge">📄 ...</span>
     <span class="clock" id="clock">--:--:--</span>
   </div>
 </div>
@@ -237,7 +237,14 @@ setInterval(()=>document.getElementById('clock').textContent=new Date().toLocale
 // ── WebSocket ──
 const socket=io('http://localhost:5001');
 const dot=document.getElementById('ws-dot'), wsl=document.getElementById('ws-label');
-socket.on('connect',()=>{dot.className='ws-dot on';wsl.textContent='실시간';addFeed('🟢','시스템','연결됨')});
+socket.on('connect',()=>{
+  dot.className='ws-dot on';wsl.textContent='실시간';addFeed('🟢','시스템','연결됨');
+  fetch('/api/health').then(r=>r.json()).then(d=>{
+    const b=document.getElementById('mode-badge');
+    if(d.mode==='LIVE'){b.textContent='💰 LIVE';b.className='badge b-buy';}
+    else{b.textContent='📄 PAPER';b.className='badge b-hold';}
+  });
+});
 socket.on('disconnect',()=>{dot.className='ws-dot';wsl.textContent='끊김';addFeed('🔴','시스템','연결 해제')});
 socket.on('new_event',e=>addFeed(e.icon,e.ticker,e.message));
 
@@ -390,9 +397,19 @@ async function loadScreener(){
   }).join('');
 }
 async function runScreener(){
-  document.getElementById('screener-grid').innerHTML='<p style="color:var(--text3)">스캔 중...</p>';
-  await fetch('/api/run_screener');
-  setTimeout(loadScreener,2000);
+  const grid = document.getElementById('screener-grid');
+  grid.innerHTML='<p style="color:var(--text3)">스캔 중...</p>';
+  try {
+    const res = await fetch('/api/run_screener');
+    const result = await res.json();
+    if (result.ok) {
+      setTimeout(loadScreener, 1000);
+    } else {
+      grid.innerHTML='<p style="color:red">스캔 실패: ' + (result.error || result.stderr || '알 수 없는 오류') + '</p>';
+    }
+  } catch(e) {
+    grid.innerHTML='<p style="color:red">스캔 실패: ' + e.message + '</p>';
+  }
 }
 
 // ── 전략 성과 ──

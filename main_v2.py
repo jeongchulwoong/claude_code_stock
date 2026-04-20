@@ -37,7 +37,8 @@ from datetime import datetime, time as dtime
 
 from loguru import logger
 
-from config import LOG_DIR, PAPER_TRADING, RISK_CONFIG, SCHEDULE_CONFIG, WATCH_LIST
+from config import (LOG_DIR, LONG_RISK_CONFIG, PAPER_TRADING, RISK_CONFIG,
+                    SCHEDULE_CONFIG, WATCH_LIST, WATCH_LIST_LONG)
 
 # ── 로깅 ─────────────────────────────────────
 logger.remove()
@@ -63,6 +64,13 @@ def is_market(t=None):
 def is_close_window():
     t = datetime.now().time()
     return dtime(15,30) <= t <= dtime(15,36)
+
+def is_force_close_window():
+    """단타 강제 청산 구간 (15:20~15:29)"""
+    t = datetime.now().time()
+    fc = RISK_CONFIG.get("force_close_time", "15:20").split(":")
+    fc_time = dtime(int(fc[0]), int(fc[1]))
+    return fc_time <= t < dtime(15, 30)
 
 
 def main():
@@ -136,11 +144,14 @@ def main():
         sr_strategy,
     ]
 
-    available_cash  = 10_000_000
-    daily_reported  = False
-    health_checked  = time.time()
-    scan_count      = 0
-    interval        = SCHEDULE_CONFIG["scan_interval_minutes"] * 60
+    available_cash      = 10_000_000
+    daily_reported      = False
+    health_checked      = time.time()
+    scan_count          = 0
+    long_scan_count     = 0
+    interval            = SCHEDULE_CONFIG["scan_interval_minutes"] * 60   # 단타: 5분
+    long_interval       = 30 * 60                                          # 장투: 30분
+    last_long_scan      = 0.0   # 장투 마지막 스캔 시각
 
     # 로그인 + 텔레그램 시작
     try:
@@ -170,6 +181,28 @@ def main():
             if not status.is_healthy:
                 hm.try_recover(status)
             health_checked = time.time()
+
+        # 단타 강제 청산 (15:20~15:29) — 장투 포지션은 제외
+        if is_force_close_window():
+            from core.risk_manager import STYLE_DAY
+            day_positions = rm.get_positions_by_style(STYLE_DAY)
+            if day_positions:
+                logger.warning("⏰ 단타 강제 청산 시작 ({}개 포지션)", len(day_positions))
+                tg.notify_text(f"⏰ 단타 강제 청산\n{len(day_positions)}개 포지션 전량 매도 (장투 제외)")
+                from core.ai_judge import AIVerdict
+                for ticker in list(day_positions):
+                    try:
+                        snap = dc.get_snapshot(ticker)
+                        v = AIVerdict(ticker=ticker, action="SELL", confidence=100,
+                                      reason="장 마감 전 강제 청산", target_price=snap.current_price,
+                                      stop_loss=snap.current_price, position_size="SMALL")
+                        om.execute(v, snap.current_price)
+                        tg.notify_verdict(v, snap.current_price)
+                        tracker.record_signal("system", ticker, "SELL", 100, snap.current_price, True, "강제청산")
+                    except Exception as e:
+                        logger.error("[{}] 강제 청산 실패: {}", ticker, e)
+            time.sleep(60)
+            continue
 
         # 장 마감 처리
         if is_close_window() and not daily_reported:
@@ -224,7 +257,7 @@ def main():
         if scan_count == 1 or now.strftime("%H:%M") == "09:05":
             logger.info("종목 스크리너 실행...")
             scr_result = screener.run(
-                universe=WATCH_LIST, use_mock=False, min_score=30.0
+                universe=WATCH_LIST, use_mock=False, min_score=10.0
             )
             tg.notify_text(screener.to_telegram(scr_result))
 
@@ -255,90 +288,122 @@ def main():
                 tg.notify_verdict(v, snap.current_price)
                 tracker.record_signal("system", ticker, "SELL", 100, snap.current_price, True, "익절")
 
-        # ─ 신규 진입 스캔 ─
-        for ticker in WATCH_LIST:
-            if not _running or ticker in rm.get_positions():
-                continue
+        # ─ 단타 신규 진입 스캔 ─
+        from core.risk_manager import STYLE_DAY, STYLE_LONG
+        from core.ai_judge import AIVerdict as AV
+        from config import fmt_price as _fmt_price
 
-            try:
-                snap = dc.get_snapshot(ticker)
-            except Exception as e:
-                logger.error("[{}] 수집 실패: {}", ticker, e); continue
-
-            # 알림 체크
-            am.check(snap)
-
-            # 전략 사전 필터
-            active_strategy = None
-            for strategy in strategies:
-                if strategy.should_enter(snap):
-                    active_strategy = strategy
-                    break
-
-            if not active_strategy:
-                continue
-
-            # 통합 AI 판단 (뉴스 + 기술지표)
-            verdict = int_judge.judge(snap, fetch_news=True)
-            verdict.ticker = snap.ticker  # resolved ticker (e.g. "AAPL"), not name
-
-            # 신호 기록
-            tracker.record_signal(
-                active_strategy.name, snap.ticker,
-                verdict.action, verdict.confidence,
-                snap.current_price, verdict.is_executable,
-                verdict.reason,
-            )
-
-            logger.info("{} | {}", active_strategy.name, verdict.summary_line)
-
-            # 뉴스 악재 차단
-            if verdict.news_blocked:
-                tg.notify_text(
-                    f"⛔ 뉴스 차단: {snap.ticker} | "
-                    f"{verdict.news_judgment}({verdict.news_score:+d}점)\n"
-                    f"{verdict.news_reason[:80]}"
-                )
-                continue
-
-            if not verdict.is_executable:
-                continue
-
-            # Kelly 포지션 사이징
+        def _execute_entry(snap, verdict, active_strategy, style):
+            """공통 진입 실행 헬퍼"""
             sizing = ps.calc(snap, verdict.confidence, available_cash)
             if not sizing.is_valid:
-                logger.debug("포지션 사이징 — 수량 0 [{ticker}]")
-                continue
-
-            # 주문 실행
-            from core.ai_judge import AIVerdict as AV
+                logger.debug("포지션 사이징 — 수량 0 [{}]", snap.ticker)
+                return
             basic_v = AV(
-                ticker=ticker,
+                ticker=snap.ticker,
                 action=verdict.action,
                 confidence=verdict.confidence,
-                reason=f"[{active_strategy.name}][뉴스:{verdict.news_judgment}] {verdict.reason}",
+                reason=f"[{style}][{active_strategy.name}][뉴스:{verdict.news_judgment}] {verdict.reason}",
                 target_price=verdict.target_price,
                 stop_loss=sizing.stop_loss,
                 position_size=active_strategy.name.upper()[:5],
             )
-            om.execute(basic_v, snap.current_price, available_cash)
+            om.execute(basic_v, snap.current_price, available_cash, style=style)
             tg.notify_verdict(basic_v, snap.current_price)
-
-            # 뉴스 상세 알림
             if verdict.news_key_points:
                 kp = "\n".join(f"  • {p}" for p in verdict.news_key_points)
                 tg.notify_text(
                     f"📰 {snap.ticker} 뉴스 분석\n"
                     f"판정: {verdict.news_judgment}({verdict.news_score:+d}점)\n{kp}"
                 )
-
-            # Kelly 사이징 정보
             from config import fmt_price as _fmt_price
             tg.notify_text(
-                f"⚖️ 포지션 사이징 [{snap.ticker}]\n"
+                f"⚖️ [{style}] 포지션 사이징 [{snap.ticker}]\n"
                 f"Kelly:{sizing.kelly_fraction:.1%} | {sizing.qty}주\n"
                 f"손절:{_fmt_price(snap.ticker, sizing.stop_loss)}({sizing.stop_loss_pct:.1f}%)"
             )
+
+        for name in WATCH_LIST:
+            if not _running or name in rm.get_positions():
+                continue
+            try:
+                snap = dc.get_snapshot(name)
+            except Exception as e:
+                logger.error("[단타][{}] 수집 실패: {}", name, e); continue
+
+            # 단타는 한국 주식만 거래 (안전장치)
+            from stock_universe import is_domestic
+            if not is_domestic(snap.ticker):
+                logger.warning("[단타] 해외 주식 스킵: {} (단타는 한국 주식만)", snap.ticker)
+                continue
+
+            am.check(snap)
+            active_strategy = next((s for s in strategies if s.should_enter(snap)), None)
+            if not active_strategy:
+                continue
+
+            verdict = int_judge.judge(snap, fetch_news=True)
+            verdict.ticker = snap.ticker
+            tracker.record_signal(active_strategy.name, snap.ticker, verdict.action,
+                                  verdict.confidence, snap.current_price,
+                                  verdict.is_executable, verdict.reason)
+            logger.info("[단타] {} | {}", active_strategy.name, verdict.summary_line)
+
+            if verdict.news_blocked:
+                tg.notify_text(f"⛔ 뉴스 차단(단타): {snap.ticker} | "
+                               f"{verdict.news_judgment}({verdict.news_score:+d}점)\n"
+                               f"{verdict.news_reason[:80]}")
+                continue
+            if not verdict.is_executable:
+                continue
+
+            _execute_entry(snap, verdict, active_strategy, STYLE_DAY)
+
+        # ─ 장투 신규 진입 스캔 (30분마다) ─
+        if time.time() - last_long_scan >= long_interval:
+            last_long_scan = time.time()
+            long_scan_count += 1
+            logger.info("─── 장투 스캔 #{} | {} ───", long_scan_count, now.strftime("%H:%M:%S"))
+
+            for name in WATCH_LIST_LONG:
+                if not _running or name in rm.get_positions():
+                    continue
+                try:
+                    snap = dc.get_snapshot(name)
+                except Exception as e:
+                    logger.error("[장투][{}] 수집 실패: {}", name, e); continue
+
+                am.check(snap)
+                # 장투는 신뢰도 기준이 낮으므로 전략 필터 없이 AI 직접 판단
+                verdict = int_judge.judge(snap, fetch_news=True)
+                verdict.ticker = snap.ticker
+
+                if verdict.confidence < LONG_RISK_CONFIG["min_confidence"]:
+                    continue
+                if verdict.news_blocked:
+                    tg.notify_text(f"⛔ 뉴스 차단(장투): {snap.ticker} | "
+                                   f"{verdict.news_judgment}({verdict.news_score:+d}점)")
+                    continue
+                if not verdict.is_executable:
+                    continue
+
+                # 장투용 매수 가능 여부 체크
+                check = rm.check_buy(snap.ticker, snap.current_price,
+                                     verdict.confidence, available_cash, style=STYLE_LONG)
+                if not check.allowed:
+                    logger.debug("[장투] 매수 차단: {}", check.reason)
+                    continue
+
+                tracker.record_signal("longterm", snap.ticker, verdict.action,
+                                      verdict.confidence, snap.current_price,
+                                      verdict.is_executable, verdict.reason)
+                logger.info("[장투] {} | {}", snap.ticker, verdict.summary_line)
+
+                class _LongStrategy:
+                    name = "longterm"
+                    def should_enter(self, _): return True
+
+                _execute_entry(snap, verdict, _LongStrategy(), STYLE_LONG)
 
         logger.info("스캔 #{} 완료 | {}초 후 재실행", scan_count, interval)
         time.sleep(interval)

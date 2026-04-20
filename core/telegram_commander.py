@@ -68,6 +68,7 @@ class TelegramCommander:
             "/halt":      self._cmd_halt,
             "/resume":    self._cmd_resume,
             "/report":    self._cmd_report,
+            "/stop":      self._cmd_stop,
             "/help":      self._cmd_help,
             "/start":     self._cmd_help,
         }
@@ -161,6 +162,7 @@ class TelegramCommander:
             "/risk      — 리스크 파라미터\n"
             "/halt      — ⛔ 거래 즉시 중단\n"
             "/resume    — ▶️ 거래 재개\n"
+            "/stop      — 🛑 프로그램 종료\n"
             "/report    — 일일 리포트 생성\n"
             "/help      — 이 도움말"
         )
@@ -323,6 +325,21 @@ class TelegramCommander:
             self._rm._daily_pnl = 0.0
             logger.info("텔레그램 명령으로 거래 재개")
         return "▶️ 거래 재개 완료\n일일 손익이 초기화됩니다."
+
+    def _cmd_stop(self, _: str = "") -> str:
+        """프로그램 완전 종료"""
+        import os
+        import sys
+        logger.critical("텔레그램 명령으로 프로그램 종료 요청")
+        self._send("🛑 프로그램 종료 중...\n모든 거래가 중단되고 프로세스가 종료됩니다.")
+        # 1초 후 종료 (메시지 전송 시간 확보)
+        import threading
+        def delayed_exit():
+            time.sleep(1)
+            logger.critical("프로그램 종료")
+            os._exit(0)
+        threading.Thread(target=delayed_exit, daemon=True).start()
+        return "🛑 프로그램 종료 완료"
 
     def _cmd_report(self, _: str = "") -> str:
         if self._rg:

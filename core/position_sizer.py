@@ -53,14 +53,14 @@ class PositionSizer:
     - RISK_CONFIG 하드 한도 적용 (절대 초과 불가)
     """
 
-    # 1/4 Kelly 안전계수
-    KELLY_FRACTION = 0.25
+    # 보수적 단타용 Kelly 계수
+    KELLY_FRACTION = 0.15
 
-    # ATR 손절 배수 (2 = ATR의 2배를 손절폭으로 사용)
-    ATR_MULTIPLIER = 2.0
+    # ATR 손절 배수 (1.5 = 타이트한 단타 손절)
+    ATR_MULTIPLIER = 1.5
 
-    # Kelly 비중 최대치 (50% 초과 금지)
-    MAX_KELLY_FRACTION = 0.50
+    # Kelly 비중 최대치 (20% 초과 금지 — 보수적 단타)
+    MAX_KELLY_FRACTION = 0.20
 
     def __init__(self, risk_manager=None) -> None:
         self._rm = risk_manager

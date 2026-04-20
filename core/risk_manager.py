@@ -16,7 +16,7 @@ from typing import Optional
 
 from loguru import logger
 
-from config import RISK_CONFIG
+from config import LONG_RISK_CONFIG, RISK_CONFIG
 
 
 # ── 결과 구조 ──────────────────────────────────
@@ -31,12 +31,17 @@ class RiskCheckResult:
 
 # ── 포지션 추적 ────────────────────────────────
 
+STYLE_DAY  = "daytrading"
+STYLE_LONG = "longterm"
+
+
 @dataclass
 class Position:
     ticker:      str
     name:        str
     qty:         int
     avg_price:   float
+    style:       str  = STYLE_DAY            # "daytrading" | "longterm"
     entry_date:  date = field(default_factory=date.today)
 
     @property
@@ -48,22 +53,24 @@ class Position:
 
 class RiskManager:
     """
-    주문 전 리스크 파라미터를 검증하고,
-    일일 손실 한도 초과 시 거래를 자동 중단한다.
+    단타/장투 포지션을 분리 관리한다.
+    각 스타일별 독립 리스크 설정·포지션 한도·손익 집계를 적용한다.
     """
 
     def __init__(self) -> None:
-        self._cfg = RISK_CONFIG
-        self._positions: dict[str, Position] = {}   # ticker → Position
-        self._daily_pnl: float = 0.0                # 오늘 실현 손익 (원)
-        self._halted: bool = False                  # 거래 중단 플래그
+        self._cfg      = RISK_CONFIG
+        self._cfg_long = LONG_RISK_CONFIG
+        self._positions: dict[str, Position] = {}   # ticker → Position (전체)
+        self._daily_pnl: float = 0.0
+        self._halted: bool = False
         self._today: date = date.today()
 
         logger.info(
-            "RiskManager 초기화 | 손절:{:.0%} | 일손실한도:{:,}원 | 최대종목:{}개",
+            "RiskManager 초기화 | 단타 손절:{:.0%}/익절:{:.0%} | 장투 손절:{:.0%}/익절:{:.0%}",
             abs(self._cfg["stop_loss_pct"]),
-            abs(self._cfg["daily_loss_limit"]),
-            self._cfg["max_positions"],
+            self._cfg["take_profit_pct"],
+            abs(self._cfg_long["stop_loss_pct"]),
+            self._cfg_long["take_profit_pct"],
         )
 
     # ── 퍼블릭 API ────────────────────────────
@@ -71,50 +78,42 @@ class RiskManager:
     def check_buy(
         self,
         ticker: str,
-        price: int,
+        price: float,
         confidence: int,
-        available_cash: int,
+        available_cash: float,
+        style: str = STYLE_DAY,
     ) -> RiskCheckResult:
-        """
-        매수 가능 여부를 검사하고 조정된 주문 수량을 반환한다.
-        """
+        """매수 가능 여부 검사. style='daytrading'|'longterm'"""
         self._reset_if_new_day()
+        cfg = self._cfg if style == STYLE_DAY else self._cfg_long
 
-        # 1) 거래 중단 여부
         if self._halted:
             return RiskCheckResult(False, "일일 손실 한도 초과로 거래 중단")
 
-        # 2) AI 신뢰도
-        if confidence < self._cfg["min_confidence"]:
+        if confidence < cfg["min_confidence"]:
             return RiskCheckResult(
                 False,
-                f"AI 신뢰도 부족 ({confidence} < {self._cfg['min_confidence']})",
+                f"AI 신뢰도 부족 ({confidence} < {cfg['min_confidence']})",
             )
 
-        # 3) 최대 보유 종목 수
-        if len(self._positions) >= self._cfg["max_positions"]:
+        # 스타일별 보유 종목 수 체크
+        style_count = sum(1 for p in self._positions.values() if p.style == style)
+        if style_count >= cfg["max_positions"]:
             return RiskCheckResult(
                 False,
-                f"최대 보유 종목 수 초과 ({len(self._positions)}/{self._cfg['max_positions']})",
+                f"최대 보유 종목 수 초과 [{style}] ({style_count}/{cfg['max_positions']})",
             )
 
-        # 4) 이미 보유 중인 종목
         if ticker in self._positions:
             return RiskCheckResult(False, f"이미 보유 중인 종목: {ticker}")
 
-        # 5) 투자금 산정
-        max_invest = min(self._cfg["max_invest_per_trade"], available_cash)
+        max_invest = min(cfg["max_invest_per_trade"], available_cash)
         qty = int(max_invest / price)
         if qty <= 0:
-            return RiskCheckResult(False, f"투자금 부족 (가용:{available_cash:,}원, 가격:{price:,}원)")
+            return RiskCheckResult(False, f"투자금 부족 (가용:{available_cash:,.0f}원, 가격:{price:,.0f}원)")
 
-        adjusted = (qty * price) < self._cfg["max_invest_per_trade"]
-        return RiskCheckResult(
-            allowed=True,
-            reason="리스크 검사 통과",
-            qty=qty,
-            adjusted=adjusted,
-        )
+        adjusted = (qty * price) < cfg["max_invest_per_trade"]
+        return RiskCheckResult(allowed=True, reason="리스크 검사 통과", qty=qty, adjusted=adjusted)
 
     def check_sell(self, ticker: str) -> RiskCheckResult:
         """매도 가능 여부 검사 (보유 확인)"""
@@ -126,41 +125,48 @@ class RiskManager:
         pos = self._positions[ticker]
         return RiskCheckResult(True, "매도 가능", qty=pos.qty)
 
-    def check_stop_loss(self, ticker: str, current_price: int) -> bool:
-        """손절 조건 달성 여부 반환 (True = 손절 실행 필요)"""
+    def check_stop_loss(self, ticker: str, current_price: float) -> bool:
+        """포지션 스타일에 맞는 손절선 비교"""
         if ticker not in self._positions:
             return False
         pos = self._positions[ticker]
+        cfg = self._cfg if pos.style == STYLE_DAY else self._cfg_long
         pnl_pct = (current_price - pos.avg_price) / pos.avg_price
-        if pnl_pct <= self._cfg["stop_loss_pct"]:
+        if pnl_pct <= cfg["stop_loss_pct"]:
             logger.warning(
-                "손절 발동: {} | 진입:{:,} → 현재:{:,} | {:.2%}",
-                ticker, int(pos.avg_price), current_price, pnl_pct,
+                "손절 발동 [{}] {}: 진입:{:.2f} → 현재:{:.2f} | {:.2%}",
+                pos.style, ticker, pos.avg_price, current_price, pnl_pct,
             )
             return True
         return False
 
-    def check_take_profit(self, ticker: str, current_price: int) -> bool:
-        """익절 조건 달성 여부 반환 (True = 익절 실행 필요)"""
+    def check_take_profit(self, ticker: str, current_price: float) -> bool:
+        """포지션 스타일에 맞는 익절선 비교"""
         if ticker not in self._positions:
             return False
         pos = self._positions[ticker]
+        cfg = self._cfg if pos.style == STYLE_DAY else self._cfg_long
         pnl_pct = (current_price - pos.avg_price) / pos.avg_price
-        if pnl_pct >= self._cfg["take_profit_pct"]:
+        if pnl_pct >= cfg["take_profit_pct"]:
             logger.info(
-                "익절 발동: {} | 진입:{:,} → 현재:{:,} | {:.2%}",
-                ticker, int(pos.avg_price), current_price, pnl_pct,
+                "익절 발동 [{}] {}: 진입:{:.2f} → 현재:{:.2f} | {:.2%}",
+                pos.style, ticker, pos.avg_price, current_price, pnl_pct,
             )
             return True
         return False
+
+    def get_positions_by_style(self, style: str) -> dict[str, Position]:
+        """단타 또는 장투 포지션만 반환"""
+        return {t: p for t, p in self._positions.items() if p.style == style}
 
     # ── 포지션 업데이트 ───────────────────────
 
-    def add_position(self, ticker: str, name: str, qty: int, price: float) -> None:
+    def add_position(self, ticker: str, name: str, qty: int, price: float,
+                     style: str = STYLE_DAY) -> None:
         self._positions[ticker] = Position(
-            ticker=ticker, name=name, qty=qty, avg_price=price
+            ticker=ticker, name=name, qty=qty, avg_price=price, style=style
         )
-        logger.info("포지션 추가: {} x{}주 @{:,}", ticker, qty, int(price))
+        logger.info("포지션 추가 [{}]: {} x{}주 @{:.2f}", style, ticker, qty, price)
 
     def remove_position(self, ticker: str, sell_price: float) -> Optional[float]:
         """포지션 제거 후 실현 손익을 반환한다."""

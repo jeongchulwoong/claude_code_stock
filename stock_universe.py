@@ -45,7 +45,24 @@ DOMESTIC: dict[str, str] = {
     "호텔신라":          "008770.KS",
     "오리온":            "271560.KS",
     "한국타이어":        "161390.KS",
-    # KOSDAQ
+    # 추가 대형주
+    "LG에너지솔루션":    "373220.KS",
+    "삼성화재":          "000810.KS",
+    "현대건설":          "000720.KS",
+    "SK스퀘어":          "402340.KS",
+    "두산에너빌리티":    "034020.KS",
+    "한국가스공사":      "036460.KS",
+    "CJ제일제당":        "097950.KS",
+    "LG생활건강":        "051900.KS",
+    "삼성엔지니어링":    "028050.KS",
+    "한화에어로스페이스":"012450.KS",
+    "SK바이오팜":        "326030.KS",
+    "포스코퓨처엠":      "003670.KS",
+    "HD현대중공업":      "329180.KS",
+    "HD현대":            "267250.KS",
+    "카카오뱅크":        "323410.KS",
+    "한미약품":          "128940.KS",
+    # KOSDAQ 유망주
     "에코프로비엠":      "247540.KQ",
     "에코프로":          "086520.KQ",
     "알테오젠":          "196170.KQ",
@@ -58,11 +75,25 @@ DOMESTIC: dict[str, str] = {
     "JYP엔터테인먼트":   "035900.KQ",
     "SM엔터테인먼트":    "041510.KQ",
     "HYBE":              "352820.KQ",
+    "크래프톤":          "259960.KQ",
+    "셀트리온헬스케어":  "091990.KQ",
+    "셀트리온제약":      "068760.KQ",
+    "씨젠":              "096530.KQ",
+    "파마리서치":        "214450.KQ",
+    "에이치엘비":        "028300.KQ",
+    "레고켐바이오":      "141080.KQ",
+    "메디톡스":          "086900.KQ",
+    "클래시스":          "214150.KQ",
+    "리노공업":          "058470.KQ",
+    "원익IPS":           "240810.KQ",
+    "피에스케이":        "319660.KQ",
+    "테크윙":            "089030.KQ",
+    "에스에프에이":      "056190.KQ",
 }
 
 # ── 해외 ───────────────────────────────────────────────────
 FOREIGN: dict[str, str] = {
-    # 미국 빅테크
+    # 미국 빅테크 (Magnificent 7 + AI)
     "Apple":             "AAPL",
     "Microsoft":         "MSFT",
     "NVIDIA":            "NVDA",
@@ -70,6 +101,16 @@ FOREIGN: dict[str, str] = {
     "Amazon":            "AMZN",
     "Meta":              "META",
     "Tesla":             "TSLA",
+    "Netflix":           "NFLX",
+    "Adobe":             "ADBE",
+    "Salesforce":        "CRM",
+    "Oracle":            "ORCL",
+    "ServiceNow":        "NOW",
+    "Snowflake":         "SNOW",
+    "Palantir":          "PLTR",
+    "CrowdStrike":       "CRWD",
+    "Datadog":           "DDOG",
+    # 반도체 (AI 수혜주)
     "Broadcom":          "AVGO",
     "AMD":               "AMD",
     "Intel":             "INTC",
@@ -78,16 +119,30 @@ FOREIGN: dict[str, str] = {
     "Micron":            "MU",
     "Applied Materials": "AMAT",
     "Lam Research":      "LRCX",
-    # 미국 금융
+    "ASML":              "ASML",
+    "KLA Corp":          "KLAC",
+    "Marvell":           "MRVL",
+    "Analog Devices":    "ADI",
+    "NXP":               "NXPI",
+    "ON Semiconductor":  "ON",
+    "Microchip":         "MCHP",
+    "TSMC ADR":          "TSM",
+    # 금융 (대형 은행/핀테크)
     "JPMorgan":          "JPM",
     "Bank of America":   "BAC",
+    "Wells Fargo":       "WFC",
+    "Citigroup":         "C",
     "Goldman Sachs":     "GS",
     "Morgan Stanley":    "MS",
     "Visa":              "V",
     "Mastercard":        "MA",
+    "American Express":  "AXP",
+    "PayPal":            "PYPL",
+    "Block":             "SQ",
     "Berkshire":         "BRK-B",
     "BlackRock":         "BLK",
-    # 미국 헬스케어
+    "Charles Schwab":    "SCHW",
+    # 헬스케어/바이오
     "Johnson & Johnson": "JNJ",
     "UnitedHealth":      "UNH",
     "Eli Lilly":         "LLY",
@@ -95,44 +150,86 @@ FOREIGN: dict[str, str] = {
     "AbbVie":            "ABBV",
     "Merck":             "MRK",
     "Thermo Fisher":     "TMO",
-    # 미국 소비재/산업
+    "Abbott":            "ABT",
+    "Danaher":           "DHR",
+    "Bristol Myers":     "BMY",
+    "Amgen":             "AMGN",
+    "Gilead":            "GILD",
+    "Regeneron":         "REGN",
+    "Vertex":            "VRTX",
+    "Moderna":           "MRNA",
+    "Intuitive Surgical":"ISRG",
+    # 소비재/리테일
     "Walmart":           "WMT",
     "Costco":            "COST",
+    "Target":            "TGT",
     "Home Depot":        "HD",
+    "Lowe's":            "LOW",
     "McDonald's":        "MCD",
-    "Nike":              "NKE",
     "Starbucks":         "SBUX",
-    "Amgen":             "AMGN",
-    # 미국 에너지/기타
+    "Chipotle":          "CMG",
+    "Nike":              "NKE",
+    "Lululemon":         "LULU",
+    "Coca-Cola":         "KO",
+    "PepsiCo":           "PEP",
+    "Procter & Gamble":  "PG",
+    "Colgate":           "CL",
+    "Estee Lauder":      "EL",
+    # 에너지
     "ExxonMobil":        "XOM",
     "Chevron":           "CVX",
     "ConocoPhillips":    "COP",
+    "Schlumberger":      "SLB",
+    "Marathon":          "MPC",
     "NextEra Energy":    "NEE",
+    # 산업/항공우주
     "Caterpillar":       "CAT",
     "Boeing":            "BA",
     "GE Aerospace":      "GE",
     "RTX":               "RTX",
-    # 반도체/장비
-    "TSMC ADR":          "TSM",
-    "ASML":              "ASML",
-    "KLA Corp":          "KLAC",
-    # 아시아
-    "SoftBank":          "9984.T",
-    "Toyota":            "7203.T",
-    "Sony":              "6758.T",
-    "Keyence":           "6861.T",
-    "Nintendo":          "7974.T",
-    "NTT":               "9432.T",
-    "TSMC TW":           "2330.TW",
-    "MediaTek":          "2454.TW",
-    "Tencent":           "0700.HK",
-    "Alibaba HK":        "9988.HK",
-    "Meituan":           "3690.HK",
+    "Lockheed Martin":   "LMT",
+    "Honeywell":         "HON",
+    "3M":                "MMM",
+    "Deere":             "DE",
+    "Union Pacific":     "UNP",
+    # 통신/미디어
+    "Verizon":           "VZ",
+    "AT&T":              "T",
+    "T-Mobile":          "TMUS",
+    "Comcast":           "CMCSA",
+    "Disney":            "DIS",
+    "Warner Bros":       "WBD",
+    "Spotify":           "SPOT",
+    # 전기차/배터리
+    "Rivian":            "RIVN",
+    "Lucid":             "LCID",
+    "NIO":               "NIO",
+    "XPeng":             "XPEV",
+    "Li Auto":           "LI",
+    "BYD ADR":           "BYDDY",
+    # 아시아 (일본)
+    "Toyota":            "TM",
+    "Sony":              "SONY",
+    "Nintendo ADR":      "NTDOY",
+    "SoftBank ADR":      "SFTBY",
+    "Keyence ADR":       "KYCCF",
+    # 아시아 (중국/홍콩)
+    "Alibaba":           "BABA",
+    "Tencent ADR":       "TCEHY",
+    "JD.com":            "JD",
+    "Baidu":             "BIDU",
+    "Pinduoduo":         "PDD",
+    "NetEase":           "NTES",
+    "Meituan ADR":       "MPNGF",
     # 유럽
     "SAP":               "SAP",
-    "Nestle":            "NESN.SW",
-    "Novartis":          "NOVN.SW",
-    "Roche":             "ROG.SW",
+    "LVMH ADR":          "LVMUY",
+    "Novo Nordisk":      "NVO",
+    "AstraZeneca":       "AZN",
+    "Shell":             "SHEL",
+    "BP":                "BP",
+    "Siemens ADR":       "SIEGY",
+    "Airbus ADR":        "EADSY",
 }
 
 ALL: dict[str, str] = {**DOMESTIC, **FOREIGN}
@@ -162,3 +259,15 @@ def resolve(name_or_ticker: str) -> tuple[str, str]:
     if name_or_ticker in TICKER_TO_NAME:
         return name_or_ticker, TICKER_TO_NAME[name_or_ticker]
     return name_or_ticker, name_or_ticker
+
+
+def is_domestic(ticker: str) -> bool:
+    """
+    한국 주식 여부 판단 (티커 기준).
+    단타는 한국 주식만 거래 가능.
+
+    Returns:
+        True: 한국 주식 (.KS, .KQ 종목)
+        False: 해외 주식
+    """
+    return ticker.endswith(".KS") or ticker.endswith(".KQ")

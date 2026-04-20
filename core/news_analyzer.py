@@ -318,8 +318,9 @@ class NewsAnalyzer:
     def __init__(self) -> None:
         self._mock = not bool(GEMINI_API_KEY)
         if not self._mock:
-            from google import genai
-            self._client = genai.Client(api_key=GEMINI_API_KEY)
+            import google.generativeai as genai
+            genai.configure(api_key=GEMINI_API_KEY)
+            self._genai = genai
 
     def analyze(
         self,
@@ -341,13 +342,13 @@ class NewsAnalyzer:
 
         prompt = self._build_prompt(ticker, ticker_name, news_items)
         try:
-            from google.genai import types as gtypes
-            resp = self._client.models.generate_content(
-                model    = AI_CONFIG["model"],
-                contents = self._SYSTEM + "\n\n" + prompt,
-                config   = gtypes.GenerateContentConfig(
-                    temperature=0, max_output_tokens=600,
-                ),
+            model = self._genai.GenerativeModel('gemini-2.5-flash-lite')
+            resp = model.generate_content(
+                self._SYSTEM + "\n\n" + prompt,
+                generation_config={
+                    'temperature': 0,
+                    'max_output_tokens': 600
+                }
             )
             raw  = resp.text
             data = json.loads(re.sub(r"```json|```", "", raw).strip())

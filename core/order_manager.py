@@ -18,7 +18,7 @@ from loguru import logger
 
 from config import API_CONFIG, DB_PATH, PAPER_TRADING, RISK_CONFIG
 from core.ai_judge import AIVerdict
-from core.risk_manager import RiskManager
+from core.risk_manager import STYLE_DAY, RiskManager
 
 
 OrderType = Literal["BUY", "SELL"]
@@ -52,6 +52,7 @@ class OrderManager:
         current_price: int,
         available_cash: int = 0,
         hoga: HogaType = "03",   # 기본: 시장가
+        style: str = STYLE_DAY,  # "daytrading" | "longterm"
     ) -> bool:
         """
         AIVerdict를 받아 리스크 검사 후 주문을 실행한다.
@@ -69,7 +70,7 @@ class OrderManager:
             return False
 
         if verdict.action == "BUY":
-            return self._buy(ticker, current_price, available_cash, hoga, verdict)
+            return self._buy(ticker, current_price, available_cash, hoga, verdict, style)
         elif verdict.action == "SELL":
             return self._sell(ticker, current_price, hoga, verdict)
 
@@ -90,10 +91,11 @@ class OrderManager:
         available_cash: int,
         hoga: HogaType,
         verdict: AIVerdict,
+        style: str = STYLE_DAY,
     ) -> bool:
-        check = self._rm.check_buy(ticker, price, verdict.confidence, available_cash)
+        check = self._rm.check_buy(ticker, price, verdict.confidence, available_cash, style=style)
         if not check.allowed:
-            logger.warning("매수 차단 [{}]: {}", ticker, check.reason)
+            logger.warning("매수 차단 [{}][{}]: {}", style, ticker, check.reason)
             self._save_order(ticker, "BUY", 0, price, "BLOCKED", check.reason)
             return False
 
@@ -103,10 +105,10 @@ class OrderManager:
 
         if PAPER_TRADING:
             logger.info(
-                "📄 [PAPER 매수] {} x{}주 @{:,}원 | 신뢰도:{}",
-                ticker, qty, price, verdict.confidence,
+                "📄 [PAPER 매수][{}] {} x{}주 @{:,}원 | 신뢰도:{}",
+                style, ticker, qty, price, verdict.confidence,
             )
-            self._rm.add_position(ticker, verdict.ticker, qty, price)
+            self._rm.add_position(ticker, verdict.ticker, qty, price, style=style)
             self._save_order(ticker, "BUY", qty, price, "PAPER_FILLED", verdict.reason, order_id)
             self._pending.discard(ticker)
             return True
@@ -116,15 +118,15 @@ class OrderManager:
             rq_name    = f"매수_{ticker}_{order_id}",
             scr_no     = "2000",
             acc_no     = self._acc,
-            order_type = 1,           # 신규매수
+            order_type = 1,
             code       = ticker,
             qty        = qty,
             price      = price if hoga == "00" else 0,
             hoga_gb    = hoga,
         )
         if ret == 0:
-            logger.success("매수 주문 전송: {} x{}주 @{:,}", ticker, qty, price)
-            self._rm.add_position(ticker, ticker, qty, price)
+            logger.success("매수 주문 전송 [{}]: {} x{}주 @{:,}", style, ticker, qty, price)
+            self._rm.add_position(ticker, ticker, qty, price, style=style)
             self._save_order(ticker, "BUY", qty, price, "SENT", verdict.reason, order_id)
         else:
             logger.error("매수 주문 실패: {} | ret={}", ticker, ret)
