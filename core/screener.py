@@ -331,3 +331,28 @@ class MarketScreener:
             )
         lines.append(f"\n⏰ {datetime.now().strftime('%H:%M:%S')}")
         return "\n".join(lines)
+
+    def hot_alerts(self, result: ScreenerResult, threshold: float = 70.0) -> list[str]:
+        """threshold 이상 종목을 개별 알림 메시지 리스트로 반환"""
+        msgs = []
+        for c in result.candidates:
+            if c.score < threshold:
+                continue
+            is_kr = c.ticker.endswith(".KS") or c.ticker.endswith(".KQ")
+            if is_kr:
+                price_str = f"{int(c.current_price):,}원"
+            elif c.ticker.endswith(".T"):
+                price_str = f"¥{int(c.current_price):,}"
+            else:
+                price_str = f"${c.current_price:.2f}"
+            reasons_str = " · ".join(c.reasons[:3])
+            msgs.append(
+                f"🚨 매수 신호 강도 높음\n"
+                f"━" * 22 + "\n"
+                f"종목: {c.name} ({c.ticker})\n"
+                f"점수: {c.score:.0f}점 🔥\n"
+                f"가격: {price_str}\n"
+                f"근거: {reasons_str}\n"
+                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+            )
+        return msgs

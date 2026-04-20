@@ -260,6 +260,8 @@ def main():
                 universe=WATCH_LIST, use_mock=False, min_score=10.0
             )
             tg.notify_text(screener.to_telegram(scr_result))
+            for alert_msg in screener.hot_alerts(scr_result, threshold=70.0):
+                tg.notify_text(alert_msg)
 
         # ─ 포지션 손절·익절 체크 ─
         for ticker, pos in list(rm.get_positions().items()):

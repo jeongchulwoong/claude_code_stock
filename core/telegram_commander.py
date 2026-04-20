@@ -81,9 +81,10 @@ class TelegramCommander:
     # ── 폴링 루프 ─────────────────────────────
 
     def start_polling(self, poll_interval: float = 3.0) -> None:
-        """별도 스레드에서 롱폴링 시작"""
+        """별도 스레드에서 롱폴링 시작 — 시작 전 미처리 메시지 건너뜀"""
         if not self._enabled:
             return
+        self._flush_pending()
         self._running = True
         t = threading.Thread(
             target=self._poll_loop,
@@ -92,6 +93,19 @@ class TelegramCommander:
         )
         t.start()
         logger.info("텔레그램 Commander 폴링 시작 ({}초 간격)", poll_interval)
+
+    def _flush_pending(self) -> None:
+        """시작 시점 이전에 쌓인 메시지를 건너뛴다 (재시작 후 /stop 재실행 방지)"""
+        try:
+            url  = self._API.format(token=self._token, method="getUpdates")
+            resp = requests.get(url, params={"offset": self._offset + 1, "timeout": 0}, timeout=5)
+            data = resp.json()
+            updates = data.get("result", [])
+            if updates:
+                self._offset = updates[-1]["update_id"]
+                logger.info("텔레그램 미처리 메시지 {}건 건너뜀 (offset={})", len(updates), self._offset)
+        except Exception as e:
+            logger.warning("텔레그램 flush 실패 (무시): {}", e)
 
     def stop(self) -> None:
         self._running = False
