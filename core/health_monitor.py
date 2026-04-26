@@ -22,12 +22,23 @@ import platform
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time as dtime
 from typing import Optional
 
 from loguru import logger
 
-from config import DB_PATH, RISK_CONFIG, TELEGRAM_CONFIG
+from config import DB_PATH, RISK_CONFIG, SCHEDULE_CONFIG, TELEGRAM_CONFIG
+
+
+def _is_market_hours() -> bool:
+    """국내 정규장(09:00~15:30, 평일) 여부."""
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+    o = dtime(*map(int, SCHEDULE_CONFIG["market_open"].split(":")))
+    c = dtime(*map(int, SCHEDULE_CONFIG["market_close"].split(":")))
+    t = now.time()
+    return o <= t <= c
 
 
 # ── 헬스 상태 ─────────────────────────────────
@@ -108,9 +119,9 @@ class HealthMonitor:
         if status.memory_pct >= self.MEMORY_WARN_PCT:
             status.issues.append(f"⚠️ 메모리 {status.memory_pct:.0f}% 사용 중")
 
-        # 4. 스캔 지연
+        # 4. 스캔 지연 — 정규장 시간에만 의미 있음 (장외엔 의도적으로 안 도는 거)
         status.scan_delay = time.time() - self._last_scan_ts
-        if status.scan_delay > self.SCAN_DELAY_WARN:
+        if _is_market_hours() and status.scan_delay > self.SCAN_DELAY_WARN:
             status.issues.append(f"⚠️ 스캔 {status.scan_delay:.0f}초 지연")
 
         # 5. 손실 한도 경보

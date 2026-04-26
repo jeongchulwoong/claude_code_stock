@@ -147,6 +147,7 @@ DOMESTIC: dict[str, str] = {
     "메디톡스":          "086900.KQ",
     "클래시스":          "214150.KQ",
     "리노공업":          "058470.KQ",
+    "한미반도체":        "042700.KQ",
     "원익IPS":           "240810.KQ",
     "피에스케이":        "319660.KQ",
     "테크윙":            "089030.KQ",
@@ -396,6 +397,8 @@ FOREIGN: dict[str, str] = {
     # ── 미국 전기차/미래모빌리티 ────────────────────────────
     "Rivian":            "RIVN",
     "Lucid":             "LCID",
+    "Ford":              "F",
+    "GM":                "GM",
     "NIO":               "NIO",
     "XPeng":             "XPEV",
     "Li Auto":           "LI",
@@ -404,12 +407,14 @@ FOREIGN: dict[str, str] = {
     "Toyota":            "TM",
     "Sony":              "SONY",
     "Nintendo ADR":      "NTDOY",
+    "Nintendo":          "NTDOY",       # alias (사용자 friendly)
     "SoftBank ADR":      "SFTBY",
     "Keyence ADR":       "KYCCF",
     "Panasonic ADR":     "PCRFY",
     "Honda ADR":         "HMC",
     "Canon ADR":         "CAJ",
-    "Mitsubishi ADR":    "MSBHF",
+    "Mitsubishi ADR":    "MSBHF",       # 미쓰비시 상사
+    "Mitsubishi UFJ":    "MUFG",        # 미쓰비시 UFJ 금융그룹 (별개 회사)
     "Recruit ADR":       "RCRUY",
     "Fast Retailing ADR":"FRCOY",
     "Shin-Etsu ADR":     "SHECY",
@@ -499,3 +504,42 @@ def resolve(name_or_ticker: str) -> tuple[str, str]:
 
 def is_domestic(ticker: str) -> bool:
     return ticker.endswith(".KS") or ticker.endswith(".KQ")
+
+
+# ── 카테고리 빌더 (소스 코멘트 헤더 기반) ───────────────
+def _build_categories() -> dict[str, list[str]]:
+    """파일의 '# ── 헤더 ──' 코멘트 사이 종목들을 묶어 카테고리 dict 반환."""
+    import re, pathlib
+    src = pathlib.Path(__file__).read_text(encoding="utf-8")
+    cats: dict[str, list[str]] = {}
+    current = None
+    header_re = re.compile(r'^\s*#\s*──+\s*(.+?)\s*──+')
+    name_re   = re.compile(r'^\s*"([^"]+)"\s*:\s*"[^"]+"')
+    in_dict   = False
+    for line in src.splitlines():
+        if line.startswith("DOMESTIC") or line.startswith("FOREIGN"):
+            in_dict = True
+            continue
+        if not in_dict:
+            continue
+        if line.startswith("}") and not line.startswith("    }"):
+            in_dict = False; current = None; continue
+        m = header_re.match(line)
+        if m:
+            h = m.group(1).strip()
+            # skip top-level "국내/해외" wrapper headers
+            if h in ("국내 (KOSPI / KOSDAQ)", "해외"):
+                current = None
+            else:
+                current = h
+                cats.setdefault(current, [])
+            continue
+        if current:
+            mn = name_re.match(line)
+            if mn:
+                cats[current].append(mn.group(1))
+    # 빈 카테고리 제거
+    return {k: v for k, v in cats.items() if v}
+
+
+CATEGORIES: dict[str, list[str]] = _build_categories()

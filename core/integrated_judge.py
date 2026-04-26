@@ -16,7 +16,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from loguru import logger
 
@@ -132,6 +132,12 @@ class IntegratedJudge:
         adj = self._calc_adjustment(news_v)
         final_conf = max(0, min(100, base["confidence"] + adj))
 
+        # 뉴스 악재 차단 — RISK_CONFIG.news_block_score (default -30) 이하면 매수 보류
+        block_threshold = RISK_CONFIG.get("news_block_score", -30)
+        news_blocked = (
+            news_v.judgment == "악재" and news_v.score <= block_threshold
+        )
+
         return IntegratedVerdict(
             ticker          = snap.ticker,
             action          = base["action"],
@@ -145,7 +151,7 @@ class IntegratedJudge:
             news_reason     = news_v.reason,
             news_key_points = news_v.key_points,
             confidence_adj  = adj,
-            news_blocked    = False,
+            news_blocked    = news_blocked,
         )
 
     def judge_batch(
@@ -162,7 +168,7 @@ class IntegratedJudge:
         try:
             from google.genai import types as gtypes
             resp = self._client.models.generate_content(
-                model='gemini-2.5-flash-lite-preview-06-17',
+                model='gemini-2.5-flash-lite',
                 contents=self._SYSTEM + "\n\n" + prompt,
                 config=gtypes.GenerateContentConfig(
                     temperature=0,
@@ -222,8 +228,8 @@ MA5/MA20:     {snap.ma5:,.0f} / {snap.ma20:,.0f}  ({'↑' if snap.ma5>snap.ma20 
         s = news_v.score
         if s >= 60:   return +10   # 강한 호재
         if s >= 30:   return +5    # 약한 호재
-        if s <= -30:  return -15   # 약한 악재
         if s <= -60:  return -25   # 강한 악재
+        if s <= -30:  return -15   # 약한 악재
         return 0                   # 중립
 
     @staticmethod

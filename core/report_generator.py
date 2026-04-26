@@ -94,7 +94,7 @@ class ReportGenerator:
 
         lines += [
             "━" * 32,
-            f"⏰ {datetime.now().strftime('%H:%M:%S')} | 페이퍼 트레이딩 모드",
+            f"⏰ {datetime.now().strftime('%H:%M:%S')} | 실거래",
         ]
 
         report = "\n".join(lines)
@@ -187,7 +187,7 @@ td{{font-size:12px;padding:8px;border-bottom:1px solid #f1efe8;color:#3d3d3a}}
 </style>
 </head><body>
 <h1>📊 일일 자동매매 리포트</h1>
-<p class="sub">{ds} | 페이퍼 트레이딩 모드 | 생성: {datetime.now().strftime('%H:%M:%S')}</p>
+<p class="sub">{ds} | 실거래 | 생성: {datetime.now().strftime('%H:%M:%S')}</p>
 
 <div class="grid">
   <div class="card">

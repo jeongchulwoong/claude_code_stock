@@ -1,0 +1,30 @@
+{
+  "risk_config": {
+    "capital_limit": 500000,
+    "max_positions": 2,
+    "max_invest_per_trade": 250000,
+    "stop_loss_pct": -0.025,
+    "take_profit_pct": 0.06,
+    "daily_loss_limit": -10000,
+    "min_confidence": 70,
+    "min_effective_rr": 1.8,
+    "stop_loss_atr_mult": 1.5,
+    "take_profit_atr_mult": 3.0,
+    "slippage_roundtrip_pct": 0.003,
+    "convert_to_long_enabled": false
+  },
+  "long_risk_config": {
+    "capital_limit": 2000000,
+    "max_positions": 3,
+    "max_invest_per_trade": 1000000
+  },
+  "scan_interval_minutes": 5,
+  "adaptive_tuning": {
+    "last_tuned_date": "",
+    "lookback_days": 90,
+    "sample_trades": 0,
+    "winrate": 0.0,
+    "avg_net_pnl_pct": 0.0,
+    "profit_factor": 0.0
+  }
+}

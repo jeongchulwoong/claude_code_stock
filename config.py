@@ -13,37 +13,74 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ──────────────────────────────────────────────
-# 운영 모드 (반드시 paper로 시작, 실거래 시 live)
+# 운영 모드 — 실전투자 전용 (모의/페이퍼 모드 제거됨)
 # ──────────────────────────────────────────────
-TRADING_MODE = os.getenv("TRADING_MODE", "paper")   # "paper" | "live"
-PAPER_TRADING = (TRADING_MODE != "live")             # True = 페이퍼 트레이딩
 
 # ──────────────────────────────────────────────
 # 리스크 파라미터 (하드코딩 — 함부로 변경 금지)
 # ──────────────────────────────────────────────
 RISK_CONFIG = {
-    "max_positions":         2,          # 동시 보유 최대 종목 수 (집중 단타)
-    "max_invest_per_trade":  300_000,    # 1회 최대 투자금 (원)
-    "stop_loss_pct":        -0.02,       # 손절선 -2.0% (노이즈 흡수)
-    "take_profit_pct":       0.04,       # 익절선 +4.0% → R/R 2:1
-    "trailing_stop_pct":     0.015,      # 트레일링 스탑: 고점 대비 -1.5% (수익 보호)
-    "trailing_start_pct":    0.02,       # 트레일링 발동 기준: +2% 도달 시
-    "daily_loss_limit":     -100_000,    # 일일 최대 손실 한도 (원)
-    "min_confidence":        78,         # AI 신뢰도 최소값 (상향)
-    "min_strategies":        2,          # 최소 전략 동의 수 (다중 확인)
-    "entry_start":           "09:40",    # 매수 시작 시각 (장 초반 변동성 회피)
-    "entry_end":             "14:30",    # 매수 종료 시각 (마감 전 신규 진입 금지)
-    "max_retry_order":       3,          # 주문 실패 시 최대 재시도 횟수
-    "force_close_time":      "15:20",    # 장 마감 전 강제 청산 시각
-    "kospi_min_change":     -0.01,       # KOSPI 하락 -1% 이상이면 당일 매수 중단
+    "capital_limit":          500_000,    # 단타 전용 운용 한도
+    "max_positions":         2,          # 동시 보유 최대 종목 수
+    "max_invest_per_trade":  250_000,    # 1회 절대 상한 (자본 50만 대비 50%)
+    # ── ATR 기반 동적 SL/TP (단타) ─────
+    "risk_per_trade_pct":    0.005,      # 거래당 리스크 = 자본의 0.5%
+    "stop_loss_atr_mult":    1.5,        # 손절선 = 진입가 - 1.5 × ATR(14)
+    "take_profit_atr_mult":  3.0,        # 익절선 = 진입가 + 3.0 × ATR → R/R 2:1
+    "trailing_start_atr_mult": 2.0,      # 트레일링 시작: +2×ATR 도달 후
+    "trailing_stop_atr_mult":  1.2,      # 트레일링 컷: 고점 - 1.2×ATR
+    # ── 기존 % 기반 (ATR 없을 때 폴백) ─
+    "stop_loss_pct":        -0.025,      # -2.5% (비용 0.4% 차감 후 -2.9%)
+    "take_profit_pct":       0.06,       # +6% (비용 차감 후 R:R 1.93 통과)
+    "trailing_stop_pct":     0.015,
+    "trailing_start_pct":    0.02,
+    # ── 일일/연속 손실 가드 ─────────────
+    "daily_loss_limit":     -10_000,     # 자본 50만 대비 -2% 절대 한도
+    "daily_loss_limit_pct": -0.02,       # 자본 대비 -2% 초과 시 당일 중단
+    "consecutive_loss_halt": 3,          # 단타 3연패 시 당일 신규 매수 중단
+    # ── 신호 품질 ─────────────────────
+    "min_confidence":        75,         # 70 → 75 (비용 감안 상향)
+    "min_strategies":        2,
+    # ── 뉴스 호재/악재 필터 ─────────────
+    "news_block_score":     -30,         # 악재 점수 ≤ -30 이면 매수 차단
+    # ── 시간 필터 ─────────────────────
+    "entry_start":           "09:40",
+    "entry_end":             "14:30",
+    "force_close_time":      "15:10",    # 15:20 → 15:10 (종가 변동성 회피)
+    # ── 시장 레짐 ─────────────────────
+    "kospi_min_change":     -0.01,
+    "kospi_above_ma20":      True,       # KOSPI 20일선 위에서만 매수
+    # ── 단타 → 장투 전환 ─────────────
+    "convert_to_long_enabled":   False,  # 단타 손익 왜곡 방지: 전환은 별도 검증 후 사용
+    "convert_min_confidence":    60,     # 전환 허용 최소 AI 신뢰도
+    "convert_require_ma120":     True,   # 전환 조건: 현재가 > MA120
+    "convert_max_atr_pct":       3.0,    # ATR/가격 > 3% 는 변동성 과대로 전환 거부
+    # ── 거래비용 모델 (실효 R:R 보정) ──────────
+    "cost_roundtrip_pct":        0.004,  # 0.4% (수수료 0.03% + 세금 0.20% + 슬리피지 0.17%)
+    "min_effective_rr":          1.8,    # 비용 보정 후 R/R 최소 1.8 미만이면 컷
+    # ── 섹터 중복 차단 ─────────────────
+    "sector_overlap_block":      True,   # 같은 섹터 중복 매수 차단
+    "max_correlated_positions":  1,      # 같은 섹터 최대 1종목
+    # ── 펀더멘탈 게이트 (작전주/적자기업 필터) ──
+    "fundamental_gate_enabled":  True,
+    "fund_min_op_margin":        0.0,    # 영업이익률 > 0% (흑자 기업)
+    "fund_max_debt_to_equity":   200.0,  # 부채비율 < 200%
+    "fund_min_roe":              0.05,   # ROE > 5%
+    "fund_per_min":              0.0,    # PER > 0 (적자 X)
+    "fund_per_max":              50.0,   # PER < 50 (거품 X)
+    "fund_allow_missing_data":   False,  # 데이터 없으면 차단 (안전 default)
+    "fund_cache_hours":          6,      # 펀더멘탈 캐시 유효시간
+    # ── 기타 ───────────────────────
+    "max_retry_order":       3,
 }
 
 # ──────────────────────────────────────────────
 # 장투 리스크 파라미터
 # ──────────────────────────────────────────────
 LONG_RISK_CONFIG = {
-    "max_positions":         6,          # 동시 보유 최대 종목 수
-    "max_invest_per_trade":  1_000_000,  # 1회 최대 투자금 (원)
+    "capital_limit":          2_000_000,  # 장투 전용 운용 한도
+    "max_positions":         3,          # 동시 보유 최대 종목 수
+    "max_invest_per_trade":  10_000_000, # 1회 절대 상한 (실제 사이징은 가용현금/잔여슬롯)
     "stop_loss_pct":        -0.07,       # 손절선 -7%
     "take_profit_pct":       0.20,       # 익절선 +20%
     "daily_loss_limit":     -500_000,    # 일일 최대 손실 한도 (원)
@@ -60,6 +97,9 @@ AI_CONFIG = {
     "temperature": 0,
 }
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+# 해외주식 시세 폴백용 — finnhub.io 무료 발급 (분당 60호출)
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
 
 # ──────────────────────────────────────────────
 # 키움 API 설정
@@ -79,7 +119,7 @@ API_CONFIG = {
 SCHEDULE_CONFIG = {
     "market_open":           "09:00",
     "market_close":          "15:30",
-    "scan_interval_minutes": 10,         # AI 판단 주기 (분) - 비용 절감
+    "scan_interval_minutes": 1,          # 단타 1분봉 스캔 주기
     "pre_market_minutes":    10,         # 장 시작 전 준비 시간
 }
 
@@ -92,10 +132,20 @@ TELEGRAM_CONFIG = {
 }
 
 # ──────────────────────────────────────────────
-# 대시보드 보안 설정 (외부 접근 비밀번호)
+# 대시보드 보안 설정 (외부 접근 비밀번호) — 역할 분리
 # ──────────────────────────────────────────────
-# .env 파일에 DASHBOARD_PASSWORD=your_password 로 설정하면 오버라이드됨
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "admin123")
+# admin: 모든 기능 (설정 변경, 주문 내역, 잔고)
+# client: 읽기 전용 (스크리너, 차트, 종목만)
+#
+# .env 에 다음 두 값 설정 권장:
+#   DASHBOARD_ADMIN_PASSWORD=긴_랜덤_관리자비번
+#   DASHBOARD_CLIENT_PASSWORD=친구공유용_간단비번
+DASHBOARD_ADMIN_PASSWORD  = os.getenv("DASHBOARD_ADMIN_PASSWORD",
+                                       os.getenv("DASHBOARD_PASSWORD", "wjd..dk33?"))
+DASHBOARD_CLIENT_PASSWORD = os.getenv("DASHBOARD_CLIENT_PASSWORD", "")  # 비어있으면 client 비활성
+
+# 하위 호환 — 기존 코드가 DASHBOARD_PASSWORD 만 import 하는 경우
+DASHBOARD_PASSWORD = DASHBOARD_ADMIN_PASSWORD
 
 # ──────────────────────────────────────────────
 # DB / 로그 경로
@@ -152,12 +202,49 @@ def _save_user_config(data: dict) -> None:
 def get_watch_names() -> list[str]:
     return _load_user_config().get("watch_names", _DEFAULT_WATCH_NAMES)
 
+
+def get_priority_watch_names() -> list[str]:
+    """
+    단타 진입 스캔용 우선순위 종목 (변동성·거래대금 큰 핵심).
+    매분 1회 스캔 — 단타 신호 빠르게 잡기 위함.
+    설정 안 하면 watch_names 의 첫 30개로 폴백.
+    """
+    cfg = _load_user_config()
+    if "priority_watch_names" in cfg and cfg["priority_watch_names"]:
+        return cfg["priority_watch_names"]
+    return cfg.get("watch_names", _DEFAULT_WATCH_NAMES)[:30]
+
 def get_risk_config() -> dict:
     overrides = _load_user_config().get("risk_config", {})
     return {**RISK_CONFIG, **overrides}
 
 def get_scan_interval() -> int:
     return _load_user_config().get("scan_interval_minutes", SCHEDULE_CONFIG["scan_interval_minutes"])
+
+
+def _apply_user_runtime_overrides() -> None:
+    """Apply user_config overrides with hard safety floors for live trading."""
+    cfg = _load_user_config()
+
+    risk_overrides = dict(cfg.get("risk_config", {}))
+    if risk_overrides:
+        RISK_CONFIG.update(risk_overrides)
+
+    long_overrides = dict(cfg.get("long_risk_config", {}))
+    if long_overrides:
+        LONG_RISK_CONFIG.update(long_overrides)
+
+    # Safety clamps: user_config may be stale or too aggressive.
+    RISK_CONFIG["min_confidence"] = max(65, min(90, int(RISK_CONFIG.get("min_confidence", 75))))
+    RISK_CONFIG["min_effective_rr"] = max(1.6, min(2.8, float(RISK_CONFIG.get("min_effective_rr", 1.8))))
+    RISK_CONFIG["stop_loss_atr_mult"] = max(1.0, min(2.5, float(RISK_CONFIG.get("stop_loss_atr_mult", 1.5))))
+    RISK_CONFIG["take_profit_atr_mult"] = max(2.0, min(4.5, float(RISK_CONFIG.get("take_profit_atr_mult", 3.0))))
+    RISK_CONFIG["max_positions"] = max(1, min(3, int(RISK_CONFIG.get("max_positions", 2))))
+    RISK_CONFIG["capital_limit"] = max(0, int(RISK_CONFIG.get("capital_limit", 0) or 0))
+    LONG_RISK_CONFIG["capital_limit"] = max(0, int(LONG_RISK_CONFIG.get("capital_limit", 0) or 0))
+
+    if "scan_interval_minutes" in cfg:
+        SCHEDULE_CONFIG["scan_interval_minutes"] = max(1, min(30, int(cfg.get("scan_interval_minutes", 1))))
 
 def get_long_watch_names() -> list[str]:
     _DEFAULT_LONG = [
@@ -192,8 +279,11 @@ def get_foreign_watch_names() -> list[str]:
     return _load_user_config().get("foreign_watch_names", _DEFAULT_FOREIGN_WATCH)
 
 # 하위 호환 — 기존 코드가 WATCH_LIST 를 직접 참조할 경우
-WATCH_LIST      = get_watch_names()
-WATCH_LIST_LONG = get_long_watch_names()
+_apply_user_runtime_overrides()
+
+WATCH_LIST          = get_watch_names()
+WATCH_LIST_LONG     = get_long_watch_names()
+WATCH_LIST_PRIORITY = get_priority_watch_names()    # 단타 분당 스캔 대상
 
 
 def fmt_price(ticker: str, price: float) -> str:

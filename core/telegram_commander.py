@@ -37,7 +37,6 @@ from config import DB_PATH, RISK_CONFIG, TELEGRAM_CONFIG
 class TelegramCommander:
     """
     텔레그램 봇 롱폴링(Long Polling) 기반 명령 처리기.
-    실거래 / 페이퍼 트레이딩 모두 사용 가능.
     """
 
     _API = "https://api.telegram.org/bot{token}/{method}"
@@ -116,16 +115,22 @@ class TelegramCommander:
                 updates = self._get_updates()
                 for update in updates:
                     self._handle_update(update)
+            except requests.exceptions.ReadTimeout:
+                # 텔레그램 롱폴링은 가끔 timeout — 정상 동작이므로 DEBUG로만 기록
+                logger.debug("텔레그램 폴링 timeout (정상)")
+            except requests.exceptions.ConnectionError as e:
+                logger.warning("텔레그램 폴링 연결 오류 (재시도): {}", e)
             except Exception as e:
                 logger.error("폴링 오류: {}", e)
             time.sleep(interval)
 
     def _get_updates(self) -> list[dict]:
         url  = self._API.format(token=self._token, method="getUpdates")
+        # 롱폴링: 서버측 timeout 25s, 클라이언트 타임아웃 30s (>서버측이어야 함)
         resp = requests.get(
             url,
-            params={"offset": self._offset + 1, "timeout": 10},
-            timeout=15,
+            params={"offset": self._offset + 1, "timeout": 25},
+            timeout=30,
         )
         data = resp.json()
         if not data.get("ok"):
@@ -381,12 +386,10 @@ class TelegramCommander:
 
     def send_startup_message(self) -> None:
         """시스템 시작 알림"""
-        from config import PAPER_TRADING, WATCH_LIST
-        mode = "📄 페이퍼 트레이딩" if PAPER_TRADING else "💰 실거래"
+        from config import WATCH_LIST
         self._send(
-            f"🤖 AI 자동매매 시스템 시작\n"
+            f"🤖 AI 자동매매 시스템 시작 | 💰 실거래\n"
             f"━" * 24 + "\n"
-            f"모드:       {mode}\n"
             f"감시 종목:  {', '.join(WATCH_LIST[:5])}\n"
             f"손절선:     {RISK_CONFIG['stop_loss_pct']:.0%}\n"
             f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"

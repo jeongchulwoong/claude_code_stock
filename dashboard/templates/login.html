@@ -141,11 +141,12 @@
       <button type="submit" class="btn-login">로그인</button>
     </form>
 
+    {% if error %}{# error 있을 때만 추가 안내 #}{% endif %}
     <div class="info">
-      <strong>💡 외부 접근 안내</strong><br>
-      • 비밀번호는 config.py의 DASHBOARD_PASSWORD<br>
-      • 로그인 후 세션 유지 (브라우저 종료 시 만료)<br>
-      • 텔레그램으로 /stop 명령 시 프로그램 종료
+      <strong>💡 안내</strong><br>
+      • 받은 비밀번호를 그대로 입력하세요<br>
+      • 관리자 비번 → 전체 기능 / 친구용 비번 → 스크리너·차트·종목만<br>
+      • 로그인 후 세션 유지 (브라우저 종료 시 만료)
     </div>
   </div>
 

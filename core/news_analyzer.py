@@ -22,11 +22,11 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from loguru import logger
 
-from config import AI_CONFIG, GEMINI_API_KEY
+from config import GEMINI_API_KEY
 
 
 # ── 데이터 구조 ───────────────────────────────
@@ -108,19 +108,21 @@ class NewsCollector:
         종목 관련 뉴스를 수집하여 반환한다.
         국내주식이면 네이버 금융 우선, 해외주식이면 Finnhub/Yahoo 우선.
         """
-        is_kr = ticker.isdigit()
+        # ".KS"/".KQ" 접미사 제거 후 6자리 숫자면 국내로 판정
+        plain = ticker.replace(".KS", "").replace(".KQ", "")
+        is_kr = plain.isdigit()
         sources = (
             [self._naver, self._google_news, self._yahoo_rss, self._finnhub]
             if is_kr else
             [self._finnhub, self._yahoo_rss, self._google_news]
         )
 
-        query = ticker_name or ticker
+        query = ticker_name or plain
         all_items: list[NewsItem] = []
 
         for fn in sources:
             try:
-                items = fn(ticker, query, max_items)
+                items = fn(plain, query, max_items)
                 if items:
                     all_items.extend(items)
                     logger.info(
@@ -215,7 +217,7 @@ class NewsCollector:
             xml = resp.read().decode("utf-8", errors="ignore")
 
         items = []
-        for m in re.finditer(r"<item>(.*?)</item>", xml, re.DOTALL)[:limit]:
+        for m in list(re.finditer(r"<item>(.*?)</item>", xml, re.DOTALL))[:limit]:
             block   = m.group(1)
             title   = re.search(r"<title>(.*?)</title>", block)
             desc    = re.search(r"<description>(.*?)</description>", block)
@@ -243,7 +245,7 @@ class NewsCollector:
             xml = resp.read().decode("utf-8", errors="ignore")
 
         items = []
-        for m in re.finditer(r"<item>(.*?)</item>", xml, re.DOTALL)[:limit]:
+        for m in list(re.finditer(r"<item>(.*?)</item>", xml, re.DOTALL))[:limit]:
             block   = m.group(1)
             title   = re.search(r"<title>(.*?)</title>", block)
             source  = re.search(r"<source[^>]*>(.*?)</source>", block)
@@ -343,7 +345,7 @@ class NewsAnalyzer:
         try:
             from google.genai import types as gtypes
             resp = self._client.models.generate_content(
-                model='gemini-2.5-flash-lite-preview-06-17',
+                model='gemini-2.5-flash-lite',
                 contents=self._SYSTEM + "\n\n" + prompt,
                 config=gtypes.GenerateContentConfig(
                     temperature=0,
@@ -481,8 +483,14 @@ class StockNewsService:
         max_news: int = 8,
     ) -> NewsVerdict:
         """단일 종목 뉴스 호재/악재 분석"""
+        # 종목명 룩업은 .KS/.KQ 접미사 떼고 시도
+        plain = ticker.replace(".KS", "").replace(".KQ", "")
         if not name:
-            name = self.KR_NAMES.get(ticker) or self.US_NAMES.get(ticker) or ticker
+            name = (self.KR_NAMES.get(plain)
+                    or self.US_NAMES.get(plain)
+                    or self.KR_NAMES.get(ticker)
+                    or self.US_NAMES.get(ticker)
+                    or plain)
         news    = self._collector.collect(ticker, name, max_items=max_news)
         verdict = self._analyzer.analyze(ticker, name, news)
         return verdict

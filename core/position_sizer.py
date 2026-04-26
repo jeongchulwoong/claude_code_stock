@@ -101,9 +101,19 @@ class PositionSizer:
         kelly    = self._calc_kelly(win_rate, payoff, confidence)
 
         # 3. 투자금 결정
-        kelly_amount  = available_cash * kelly
-        max_amount    = RISK_CONFIG["max_invest_per_trade"]
-        invest_amount = min(kelly_amount, max_amount, available_cash * 0.20)
+        # 소액 자본(<2백만원)일 때는 0.20 cap이 너무 빡빡해 1주도 못 사는 경우가 생긴다.
+        # 자본이 작으면 cap을 풀어 max_invest_per_trade까지 허용.
+        kelly_amount = available_cash * kelly
+        max_amount   = RISK_CONFIG["max_invest_per_trade"]
+        if available_cash < 2_000_000:
+            cap = min(max_amount, available_cash * 0.95)
+        else:
+            cap = min(max_amount, available_cash * 0.20)
+
+        # 1주는 살 수 있게 floor 보장 (가격이 cap 이내일 때만)
+        floor = price if price <= cap else 0
+        invest_amount = max(kelly_amount, floor)
+        invest_amount = min(invest_amount, cap)
         invest_amount = max(invest_amount, 0)
 
         # 4. 수량 계산
@@ -112,7 +122,8 @@ class PositionSizer:
         method = f"1/4 Kelly({kelly:.1%}) + ATR손절({stop_pct:.1%})"
         reason = (
             f"승률:{win_rate:.0%} | 손익비:{payoff:.1f}배 | "
-            f"Kelly:{kelly:.1%} → 투자금:{invest_amount:,.0f}원 | "
+            f"Kelly:{kelly:.1%} → Kelly금액:{kelly_amount:,.0f} / "
+            f"floor(1주):{floor:,.0f} / cap:{cap:,.0f} → 투자:{invest_amount:,.0f}원 | "
             f"손절:{stop_pct:.1%}(ATR x{self.ATR_MULTIPLIER})"
         )
 

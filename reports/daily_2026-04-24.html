@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8">
+<title>일일 리포트 — 2026-04-24</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#f5f4f0;color:#2c2c2a;padding:24px}
+h1{font-size:20px;font-weight:500;margin-bottom:4px}
+.sub{color:#5f5e5a;font-size:13px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.card{background:#fff;border-radius:12px;border:1px solid #e0dfd8;padding:16px}
+.label{font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.val{font-size:22px;font-weight:500}
+.section{background:#fff;border-radius:12px;border:1px solid #e0dfd8;padding:20px;margin-bottom:16px}
+.section h2{font-size:13px;font-weight:500;margin-bottom:14px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;color:#5f5e5a;padding:8px;border-bottom:1px solid #e0dfd8;text-align:left}
+td{font-size:12px;padding:8px;border-bottom:1px solid #f1efe8;color:#3d3d3a}
+</style>
+</head><body>
+<h1>📊 일일 자동매매 리포트</h1>
+<p class="sub">2026-04-24 | 실거래 | 생성: 15:30:55</p>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">오늘 실현손익</div>
+    <div class="val" style="color:#27500A">📈 +0원</div>
+  </div>
+  <div class="card">
+    <div class="label">총 주문</div>
+    <div class="val">0건</div>
+  </div>
+  <div class="card">
+    <div class="label">체결 / 차단</div>
+    <div class="val">0 / 0</div>
+  </div>
+  <div class="card">
+    <div class="label">AI 평균 신뢰도</div>
+    <div class="val">0점</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>거래 내역 (오늘)</h2>
+  <table>
+    <thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량</th><th>가격</th><th>상태</th><th>근거</th></tr></thead>
+    <tbody id="trades">
+      <tr><td colspan='7' style='text-align:center;color:#888'>오늘 거래 없음</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>리스크 현황</h2>
+  <table>
+    <thead><tr><th>항목</th><th>현재값</th><th>한도</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>일일 손실</td><td>+0원</td>
+          <td>-10,000원</td>
+          <td>✅ 정상</td></tr>
+      <tr><td>체결 건수</td><td>0건</td><td>—</td><td>✅</td></tr>
+    </tbody>
+  </table>
+</div>
+</body></html>
