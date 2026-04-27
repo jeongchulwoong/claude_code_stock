@@ -326,6 +326,12 @@ class KiwoomRestAPI:
         self._token_expiry_ts: float = 0.0
         self._token_lock = threading.Lock()
         self._connected = False
+        # 직전 send_order 가 broker 로부터 받은 ord_no — cancel_order 등에 사용.
+        # 호출 직후 OrderManager 가 즉시 읽어가는 동기 흐름을 가정 (self._sending 가 직렬화).
+        self.last_ord_no: str = ""
+        # 직전 send_order 의 broker 거절 메시지 (성공 시 빈 문자열).
+        # OrderManager 가 ret!=0 직후 읽어 orders.reject_msg 컬럼에 저장한다.
+        self.last_reject_msg: str = ""
         logger.info("KiwoomRestAPI 초기화 | 실전투자")
 
     @staticmethod
@@ -812,25 +818,147 @@ class KiwoomRestAPI:
             resp = self._post_tr(api_id, "/api/dostk/ordr", body, timeout=10)
             if not resp:
                 logger.error("주문 응답 없음 | {} {} {}주", action, ticker, qty)
+                self.last_ord_no = ""
+                self.last_reject_msg = "broker 응답 없음"
                 return -1
 
             if self._return_code_ok(resp):
                 ord_no = resp.get("ord_no", "")
+                self.last_ord_no = ord_no   # OrderManager 가 cancel_order 시 사용
+                self.last_reject_msg = ""
                 logger.success(
                     "주문 성공 | {} {} {}주 @{} | ord_no={}",
                     action, ticker, qty, ord_uv or "시장가", ord_no,
                 )
                 return 0
 
+            self.last_ord_no = ""
+            rc  = str(resp.get("return_code", "")).strip()
+            msg = str(resp.get("return_msg", "")).strip()
+            self.last_reject_msg = (msg or f"rc={rc}")[:200]
             logger.error(
                 "주문 실패 | {} {} {}주 trde_tp={} ord_uv={} | rc={} msg={}",
-                action, ticker, qty, trde_tp, ord_uv,
-                resp.get("return_code"), resp.get("return_msg"),
+                action, ticker, qty, trde_tp, ord_uv, rc, msg,
             )
             return -1
         except Exception as e:
+            self.last_ord_no = ""
+            self.last_reject_msg = f"{type(e).__name__}: {e}"[:200]
             logger.error("주문 오류 [{}]: {}", ticker, e)
             return -1
+
+    def cancel_order(self, orig_ord_no: str, ticker: str, side: str, qty: int = 0) -> int:
+        """
+        미체결 주문 취소 — 키움 REST kt10003(매수취소) / kt10004(매도취소).
+
+        Args:
+            orig_ord_no: 원주문번호 (send_order 응답의 ord_no, last_ord_no 캐시 가능)
+            ticker:       .KS / .KQ 가능
+            side:         'BUY' | 'SELL'
+            qty:          취소 수량 (0 → 전량 취소)
+
+        Returns:
+            0=성공, -1=실패
+        """
+        if not orig_ord_no:
+            logger.warning("cancel_order: orig_ord_no 없음 — broker 측 취소 skip ({} {})", side, ticker)
+            return -1
+        code = ticker.replace(".KS", "").replace(".KQ", "")
+        api_id = "kt10003" if side.upper() == "BUY" else "kt10004"
+        body = {
+            "dmst_stex_tp": "KRX",
+            "orig_ord_no":  str(orig_ord_no),
+            "stk_cd":       code,
+            "ord_qty":      str(int(qty or 0)),     # 0 = 전량 취소
+            "ord_uv":       "",
+            "trde_tp":      "0",                     # 취소는 보통주문(0) 으로
+        }
+        try:
+            resp = self._post_tr(api_id, "/api/dostk/ordr", body, timeout=10)
+            if resp and self._return_code_ok(resp):
+                logger.success("주문 취소 성공 | {} {} {}주 | orig={}",
+                               side, code, qty, orig_ord_no)
+                return 0
+            rc  = resp.get("return_code") if resp else "-"
+            msg = resp.get("return_msg")  if resp else "-"
+            logger.error("주문 취소 실패 | {} {} | rc={} msg={}", side, code, rc, msg)
+            return -1
+        except Exception as e:
+            logger.error("주문 취소 오류 [{}]: {}", code, e)
+            return -1
+
+    def get_open_orders(self) -> list[dict]:
+        """
+        미체결 주문 목록 — 키움 REST kt00007 (계좌별주문체결내역상세요청, qry_tp='1' 미체결만).
+        반환: [{ord_no, ticker, code, side, ord_qty, filled_qty, remaining}, ...]
+        endpoint 미지원 / 응답 없음 시 빈 리스트.
+        """
+        try:
+            body = self._post_tr(
+                "kt00007", "/api/dostk/acnt",
+                {
+                    "qry_tp":       "1",      # 1=미체결만
+                    "stk_bond_tp":  "0",      # 0=주식
+                    "sell_tp":      "0",      # 0=전체
+                    "stk_cd":       "",
+                    "fr_ord_no":    "",
+                    "dmst_stex_tp": "%",
+                },
+                timeout=10,
+            )
+            if not body or not self._return_code_ok(body):
+                if body:
+                    logger.info(
+                        "kt00007 미체결 조회 실패/미지원 | rc={} msg={}",
+                        body.get("return_code"), body.get("return_msg"),
+                    )
+                return []
+
+            rows = (body.get("acnt_ord_cntr_prps_dtl")
+                    or body.get("acnt_ord_cntr_prst_array")
+                    or body.get("output") or body.get("output1") or [])
+            if not rows:
+                return []
+
+            def _num(v, cast=int):
+                if v is None: return cast(0)
+                try:
+                    s = str(v).replace("+", "").replace("-", "").replace(",", "").strip()
+                    return cast(s or 0)
+                except Exception:
+                    return cast(0)
+
+            out: list[dict] = []
+            for it in rows:
+                ord_no = str(it.get("ord_no") or it.get("odno") or "").strip()
+                if not ord_no:
+                    continue
+                code = str(it.get("stk_cd") or it.get("pdno") or "").strip()
+                if not code:
+                    continue
+                code_short = code.replace(".KS", "").replace(".KQ", "")
+                ticker = code if (code.endswith(".KS") or code.endswith(".KQ")) else f"{code_short}.KS"
+                ord_qty   = _num(it.get("ord_qty") or it.get("oord_qty"))
+                filled    = _num(it.get("cntr_qty") or it.get("tot_cntr_qty") or it.get("exec_qty"))
+                remaining = max(0, _num(it.get("rmnd_qty") or it.get("rmn_qty")) or (ord_qty - filled))
+                io_tp = str(it.get("io_tp_nm") or it.get("ord_dvsn_nm")
+                            or it.get("io_tp")  or it.get("sll_buy_dvsn_cd_name")
+                            or "").strip()
+                side = "SELL" if ("매도" in io_tp or io_tp.upper() in ("2", "S", "SELL")) else "BUY"
+                out.append({
+                    "ord_no":     ord_no,
+                    "ticker":     ticker,
+                    "code":       code_short,
+                    "side":       side,
+                    "ord_qty":    ord_qty,
+                    "filled_qty": filled,
+                    "remaining":  remaining,
+                })
+            logger.debug("kt00007 미체결 {}건", len(out))
+            return out
+        except Exception as e:
+            logger.warning("kt00007 미체결 조회 오류: {}", e)
+            return []
 
     def get_deposit_detail(self) -> dict:
         """

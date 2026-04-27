@@ -13,6 +13,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ──────────────────────────────────────────────
+# yfinance tz cache — 프로젝트 내부 db/cache 로 고정
+# (기본 경로 ~/.cache 가 권한·로크 문제로 'unable to open database file' 을 일으킴)
+# ──────────────────────────────────────────────
+try:
+    _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
+    _YF_CACHE_DIR = _PROJECT_ROOT / "db" / "cache"
+    _YF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    import yfinance as _yf
+    _yf.set_tz_cache_location(str(_YF_CACHE_DIR))
+except Exception:
+    # yfinance 미설치 또는 신버전 API 변경 등 — 런타임에 영향 없음
+    pass
+
+# ──────────────────────────────────────────────
 # 운영 모드 — 실전투자 전용 (모의/페이퍼 모드 제거됨)
 # ──────────────────────────────────────────────
 

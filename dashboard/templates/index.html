@@ -104,7 +104,7 @@ tr:hover td{background:var(--surface2)}
 <div class="header">
   <div class="header-left">
     <span class="logo">🤖 AI 주식 자동매매</span>
-    <span class="mode-badge">📄 PAPER</span>
+    <span class="mode-badge" id="mode-badge">—</span>
   </div>
   <span class="header-time" id="clock">--:--:--</span>
 </div>
@@ -174,6 +174,16 @@ function tick(){
   document.getElementById('clock').textContent = new Date().toLocaleTimeString('ko-KR')
 }
 tick(); setInterval(tick,1000)
+
+// ── 매매 모드 배지 (/api/health 와 동기화) ──
+function loadTradingMode(){
+  fetch('/api/health').then(r=>r.json()).then(d=>{
+    const b=document.getElementById('mode-badge')
+    if(!b) return
+    b.textContent = (d.mode==='LIVE') ? '● LIVE' : '📄 PAPER'
+  }).catch(()=>{})
+}
+loadTradingMode(); setInterval(loadTradingMode, 30000)
 
 // ── KPI 로드 ──
 async function loadSummary(){

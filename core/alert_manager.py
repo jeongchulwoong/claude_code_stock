@@ -20,7 +20,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Optional
+from typing import Optional
 
 import requests
 from loguru import logger

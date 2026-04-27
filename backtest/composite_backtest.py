@@ -13,14 +13,11 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from loguru import logger
 
 
 @dataclass

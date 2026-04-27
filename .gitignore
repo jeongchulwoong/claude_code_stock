@@ -5,6 +5,12 @@
 db/*.db
 db/*.sqlite
 
+# yfinance 자동 캐시 (config.py 에서 set_tz_cache_location 으로 고정)
+db/cache/
+
+# 인코딩 깨진 파일 임시 백업 (수동 복구용)
+*.mojibake_backup*
+
 # 로그
 logs/
 

@@ -21,8 +21,9 @@ from typing import Optional
 
 from loguru import logger
 
-from config import DB_PATH, RISK_CONFIG
+from config import DB_PATH, LONG_RISK_CONFIG, RISK_CONFIG
 from core.data_collector import StockSnapshot
+from core.risk_manager import STYLE_DAY
 
 
 # ── 결과 구조 ─────────────────────────────────
@@ -74,6 +75,7 @@ class PositionSizer:
         snap:           StockSnapshot,
         confidence:     int,
         available_cash: float,
+        style:          str = STYLE_DAY,
         ai_win_rate:    Optional[float] = None,   # AI가 제공한 승률 (없으면 역사적 값 사용)
         ai_payoff:      Optional[float] = None,   # AI가 제공한 손익비
     ) -> SizingResult:
@@ -83,6 +85,7 @@ class PositionSizer:
         confidence: AI 신뢰도 (0~100) — 높을수록 큰 포지션
         available_cash: 사용 가능 현금
         """
+        cfg   = RISK_CONFIG if style == STYLE_DAY else LONG_RISK_CONFIG
         price = snap.current_price
         atr   = getattr(snap, "atr", price * 0.015)  # ATR 없으면 1.5% 가정
 
@@ -91,7 +94,7 @@ class PositionSizer:
         atr_stop_pct   = (atr_stop_price - price) / price  # 음수
 
         # 손절선을 RISK_CONFIG 최소값으로 clip
-        config_stop_pct = RISK_CONFIG["stop_loss_pct"]  # 예: -0.03
+        config_stop_pct = cfg["stop_loss_pct"]  # 예: -0.03
         stop_pct        = max(atr_stop_pct, config_stop_pct)   # 더 좁은 쪽
         stop_price      = round(price * (1 + stop_pct), 2)
 
@@ -104,7 +107,7 @@ class PositionSizer:
         # 소액 자본(<2백만원)일 때는 0.20 cap이 너무 빡빡해 1주도 못 사는 경우가 생긴다.
         # 자본이 작으면 cap을 풀어 max_invest_per_trade까지 허용.
         kelly_amount = available_cash * kelly
-        max_amount   = RISK_CONFIG["max_invest_per_trade"]
+        max_amount   = cfg["max_invest_per_trade"]
         if available_cash < 2_000_000:
             cap = min(max_amount, available_cash * 0.95)
         else:

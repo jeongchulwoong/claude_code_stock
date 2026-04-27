@@ -6,7 +6,7 @@
     "stop_loss_pct": -0.025,
     "take_profit_pct": 0.06,
     "daily_loss_limit": -10000,
-    "min_confidence": 70,
+    "min_confidence": 75,
     "min_effective_rr": 1.8,
     "stop_loss_atr_mult": 1.5,
     "take_profit_atr_mult": 3.0,

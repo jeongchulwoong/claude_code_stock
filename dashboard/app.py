@@ -212,9 +212,14 @@ def advanced_dashboard():
     )
 
 
-# ── 잔고 API ─────────────────────────────────────
-_balance_cache = {"t": 0, "data": None}
-_BAL_TTL_SEC = 30
+@app.route("/client")
+def client_dashboard():
+    """비밀번호 없이 접근 가능한 공개 투자자 리포트 페이지.
+
+    데이터는 모두 /api/public/* 만 사용한다. 어드민 API 호출은 페이지 안에 존재하지 않는다.
+    """
+    return render_template("client_dashboard.html")
+
 
 @app.route("/api/stocks")
 @login_required
@@ -242,35 +247,351 @@ def api_ai_accuracy():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/balance")
-@admin_required
-def api_balance():
-    """키움 kt00004 잔고 조회 (30초 캐시) — 민감정보, admin 전용."""
-    import time as _t
-    now = _t.time()
-    if _balance_cache["data"] and now - _balance_cache["t"] < _BAL_TTL_SEC:
-        return jsonify(_balance_cache["data"])
-    try:
+# ── 포트폴리오 / 잔고 공통 인프라 ─────────────────
+# /api/balance, /api/portfolio, /api/public/* 가 모두 같은 snapshot 을 사용해
+# 화면에 표시되는 평가금액·평가손익이 어디서나 일치하도록 한다.
+
+_kiwoom_singleton = {"kw": None}
+
+def _get_kiwoom():
+    """프로세스 단일 KiwoomRestAPI 핸들. 재로그인 시 토큰 자동 갱신은 _ensure_token 에서 수행."""
+    if _kiwoom_singleton["kw"] is None:
         from core.kiwoom_api import KiwoomRestAPI
         kw = KiwoomRestAPI()
         if not kw.login():
-            return jsonify({"ok": False, "error": "키움 로그인 실패"}), 500
-        bal = kw.get_balance()
-        out = (bal.get("output2", [{}]) or [{}])[0]
-        data = {
-            "ok":           True,
-            "buying_power": out.get("buying_power", 0),
-            "entr":         out.get("entr", 0),
-            "d2_entra":     out.get("d2_entra", 0),
-            "tot_evlu_amt": out.get("tot_evlu_amt", 0),
-            "tot_pur_amt":  out.get("tot_pur_amt", 0),
-            "tot_evlt_pl":  out.get("tot_evlt_pl", 0),
-        }
-        _balance_cache["t"] = now
-        _balance_cache["data"] = data
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+            return None
+        _kiwoom_singleton["kw"] = kw
+    return _kiwoom_singleton["kw"]
+
+
+# 섹터 매핑 — 보유 종목 평가금액 기준 비중 계산용.
+SECTOR_MAP = {
+    "005930": "반도체", "000660": "반도체",
+    "035420": "IT",     "035720": "IT",     "036570": "IT",
+    "051910": "화학",   "006400": "화학",   "096770": "화학",
+    "005380": "자동차", "000270": "자동차",
+    "068270": "바이오", "207940": "바이오", "302440": "바이오",
+    "105560": "금융",   "055550": "금융",   "086790": "금융",
+    "017670": "통신",   "030200": "통신",
+    "015760": "유틸",   "034730": "유틸",
+    "066570": "전자",   "009150": "전자",
+}
+
+_portfolio_cache = {"t": 0, "data": None}
+_PORTFOLIO_TTL_SEC = 30
+
+# Public API 응답에서 절대 노출되어선 안 되는 키. _strip_public 가 재귀로 검증한다.
+# - reason 은 AI 판단/주문 내부 근거 전체 원문이라 공개 절대 금지.
+_PUBLIC_FORBIDDEN_KEYS = frozenset({
+    "buying_power", "entr", "d2_entra",
+    "account", "broker_ord_no", "reject_msg",
+    "raw", "config", "token", "reason",
+})
+
+
+def _get_portfolio_snapshot(force_refresh: bool = False) -> dict:
+    """공통 포트폴리오 snapshot — admin 전용 (민감 필드 포함). 30초 캐시.
+
+    /api/balance, /api/portfolio, /api/public/* 모두 이 함수를 베이스로 사용한다.
+    public API 는 _public_snapshot() 로 한 번 더 거른 뒤 노출한다.
+
+    반환: {
+      ok, updated_at, error?,
+      buying_power, entr, d2_entra,                       # 민감 (admin only)
+      tot_evlu_amt, tot_pur_amt, tot_evlt_pl, tot_evlt_pl_rate,
+      realized_pnl, today_realized_pnl,
+      holdings_count, holdings: [...], sectors: [...],
+    }
+    """
+    import time as _t
+    now = _t.time()
+    if (not force_refresh) and _portfolio_cache["data"] \
+            and now - _portfolio_cache["t"] < _PORTFOLIO_TTL_SEC:
+        return _portfolio_cache["data"]
+
+    snap: dict = {
+        "ok":               False,
+        "updated_at":       datetime.now().isoformat(timespec="seconds"),
+        "buying_power":     0, "entr": 0, "d2_entra": 0,
+        "tot_evlu_amt":     0, "tot_pur_amt": 0,
+        "tot_evlt_pl":      0, "tot_evlt_pl_rate": 0.0,
+        "realized_pnl":     0, "today_realized_pnl": 0,
+        "holdings_count":   0, "holdings": [], "sectors": [],
+        "error":            None,
+    }
+
+    kw = _get_kiwoom()
+    if kw is None:
+        snap["error"] = "키움 로그인 실패"
+        return snap
+
+    try:
+        bal = kw.get_balance() or {}
+    except Exception:
+        snap["error"] = "잔고 조회 실패"
+        return snap
+    out = (bal.get("output2", [{}]) or [{}])[0]
+    snap["buying_power"] = int(out.get("buying_power", 0) or 0)
+    snap["entr"]         = int(out.get("entr", 0) or 0)
+    snap["d2_entra"]     = int(out.get("d2_entra", 0) or 0)
+    # kt00004 의 계좌 요약은 kt00018 보유 합과 다를 수 있어 우선 임시 저장 후
+    # 보유 합산이 양수면 그 쪽으로 덮어쓴다 (화면 일관성).
+    snap["tot_evlu_amt"] = int(out.get("tot_evlu_amt", 0) or 0)
+    snap["tot_pur_amt"]  = int(out.get("tot_pur_amt", 0) or 0)
+    snap["tot_evlt_pl"]  = int(out.get("tot_evlt_pl", 0) or 0)
+
+    try:
+        holdings_raw = kw.get_holdings() or []
+    except Exception:
+        holdings_raw = []
+
+    holdings: list[dict] = []
+    sector_amt: dict[str, int] = {}
+    for h in holdings_raw:
+        raw_code = h.get("code") or h.get("ticker") or ""
+        code = str(raw_code).replace(".KS", "").replace(".KQ", "")
+        ticker = h.get("ticker") or (f"{code}.KS" if code else "")
+        qty = int(h.get("qty") or 0)
+        if qty <= 0:
+            continue
+        avg_price = float(h.get("avg_price") or 0)
+        cur_price = float(h.get("cur_price") or 0)
+        eval_amt  = int(h.get("eval_amt") or (qty * cur_price) or 0)
+        invested  = int(qty * avg_price)
+        pnl       = int(h.get("pnl") or (eval_amt - invested) or 0)
+        pnl_rate  = float(h.get("pnl_rate") or ((pnl / invested * 100.0) if invested else 0.0))
+        sector    = SECTOR_MAP.get(code, "기타")
+        sector_amt[sector] = sector_amt.get(sector, 0) + eval_amt
+        holdings.append({
+            "ticker":    ticker,
+            "code":      code,
+            "name":      h.get("name") or code,
+            "qty":       qty,
+            "avg_price": avg_price,
+            "cur_price": cur_price,
+            "eval_amt":  eval_amt,
+            "pnl":       pnl,
+            "pnl_rate":  round(pnl_rate, 2),
+            "sector":    sector,
+            "weight":    0.0,
+        })
+
+    # 보유 합산이 양수일 때만 계좌 요약을 덮는다 (보유 0인 경우 kt00004 그대로).
+    holdings_eval = sum(h["eval_amt"] for h in holdings)
+    holdings_pur  = int(sum(h["qty"] * h["avg_price"] for h in holdings))
+    holdings_pnl  = sum(h["pnl"] for h in holdings)
+    if holdings_eval > 0:
+        snap["tot_evlu_amt"] = holdings_eval
+        snap["tot_pur_amt"]  = holdings_pur
+        snap["tot_evlt_pl"]  = holdings_pnl
+    if snap["tot_pur_amt"]:
+        snap["tot_evlt_pl_rate"] = round(snap["tot_evlt_pl"] / snap["tot_pur_amt"] * 100.0, 2)
+    else:
+        snap["tot_evlt_pl_rate"] = 0.0
+
+    total_eval_for_weight = holdings_eval or snap["tot_evlu_amt"] or 1
+    for h in holdings:
+        h["weight"] = round(h["eval_amt"] / total_eval_for_weight * 100.0, 2) \
+            if total_eval_for_weight else 0.0
+    holdings.sort(key=lambda x: x["eval_amt"], reverse=True)
+
+    sectors = [
+        {"sector": k, "eval_amt": v,
+         "weight": round(v / total_eval_for_weight * 100.0, 2) if total_eval_for_weight else 0.0}
+        for k, v in sorted(sector_amt.items(), key=lambda kv: kv[1], reverse=True)
+        if v > 0
+    ]
+
+    # DB 기반 실현손익 (매도 청산 누적 / 오늘분)
+    try:
+        stats = get_summary_stats()
+        snap["realized_pnl"]       = int(stats.get("realized_pnl", 0) or 0)
+        snap["today_realized_pnl"] = int(stats.get("today_realized_pnl", 0) or 0)
+    except Exception:
+        pass
+
+    snap["holdings"]       = holdings
+    snap["sectors"]        = sectors
+    snap["holdings_count"] = len(holdings)
+    snap["ok"]             = True
+    snap["error"]          = None
+
+    _portfolio_cache["t"]    = now
+    _portfolio_cache["data"] = snap
+    return snap
+
+
+def _strip_public(payload):
+    """공개 응답 마지막 방어선 — _PUBLIC_FORBIDDEN_KEYS 를 재귀로 제거.
+
+    explicit allowlist 로 dict 를 만들고 있더라도, 향후 누군가 nested 구조에 민감
+    필드를 실수로 끼워 넣을 때를 대비한 가드. dict / list 어떤 깊이든 검사한다.
+    """
+    if isinstance(payload, dict):
+        cleaned = {}
+        removed = []
+        for k, v in payload.items():
+            if k in _PUBLIC_FORBIDDEN_KEYS:
+                removed.append(k)
+                continue
+            cleaned[k] = _strip_public(v)
+        if removed:
+            print(f"[security] /api/public 응답에서 금지 키 제거: {removed}", flush=True)
+        return cleaned
+    if isinstance(payload, list):
+        return [_strip_public(item) for item in payload]
+    return payload
+
+
+@app.route("/api/balance")
+@admin_required
+def api_balance():
+    """키움 잔고 + 보유 합산 — 민감정보. /api/portfolio 와 동일 snapshot 사용."""
+    snap = _get_portfolio_snapshot()
+    return jsonify({
+        "ok":           bool(snap.get("ok")),
+        "error":        snap.get("error"),
+        "buying_power": snap.get("buying_power", 0),
+        "entr":         snap.get("entr", 0),
+        "d2_entra":     snap.get("d2_entra", 0),
+        "tot_evlu_amt": snap.get("tot_evlu_amt", 0),
+        "tot_pur_amt":  snap.get("tot_pur_amt", 0),
+        "tot_evlt_pl":  snap.get("tot_evlt_pl", 0),
+    }), (200 if snap.get("ok") else 500)
+
+
+@app.route("/api/portfolio")
+@admin_required
+def api_portfolio():
+    """관리자 전용 — 키움 잔고 + 보유 + 섹터 + 실현손익 합본."""
+    snap = _get_portfolio_snapshot()
+    if not snap.get("ok"):
+        return jsonify({"ok": False, "error": snap.get("error") or "조회 실패"}), 500
+    return jsonify(snap)
+
+
+# ── /api/public/* — 비로그인 공개 엔드포인트 ──────
+# 공개 페이지 (/client) 가 사용한다. 민감정보(매수가능/예수금/계좌/주문 거절 사유)는 절대 포함 금지.
+
+def _public_snapshot_or_none() -> dict:
+    """공통 snapshot 을 가져오되 실패 사유는 일반화해 외부에 누설 금지."""
+    snap = _get_portfolio_snapshot()
+    if not snap.get("ok"):
+        return {"ok": False, "updated_at": snap.get("updated_at"),
+                "error": "데이터 일시 조회 불가"}
+    return snap
+
+
+def _public_failure(updated_at: str | None = None):
+    """모든 public 엔드포인트가 실패 시 동일하게 사용하는 무해한 응답."""
+    return {
+        "ok": False,
+        "updated_at": updated_at or datetime.now().isoformat(timespec="seconds"),
+        "error": "데이터 일시 조회 불가",
+    }
+
+
+@app.route("/api/public/summary")
+def api_public_summary():
+    """공개 요약 — total_pnl = unrealized_pnl + realized_pnl."""
+    snap = _public_snapshot_or_none()
+    if not snap.get("ok"):
+        return jsonify(_strip_public(_public_failure(snap.get("updated_at")))), 200
+    unrealized = int(snap.get("tot_evlt_pl", 0) or 0)
+    realized   = int(snap.get("realized_pnl", 0) or 0)
+    payload = {
+        "ok":                  True,
+        "updated_at":          snap.get("updated_at"),
+        "total_value":         int(snap.get("tot_evlu_amt", 0) or 0),
+        "unrealized_pnl":      unrealized,
+        "unrealized_pnl_rate": float(snap.get("tot_evlt_pl_rate", 0.0) or 0.0),
+        "realized_pnl":        realized,
+        "today_realized_pnl":  int(snap.get("today_realized_pnl", 0) or 0),
+        "total_pnl":           unrealized + realized,
+        "holdings_count":      int(snap.get("holdings_count", 0) or 0),
+    }
+    return jsonify(_strip_public(payload))
+
+
+@app.route("/api/public/holdings")
+def api_public_holdings():
+    """공개 보유 목록 — admin 식별자(broker_ord_no/code 등)는 응답에서 의도적으로 제외."""
+    snap = _public_snapshot_or_none()
+    if not snap.get("ok"):
+        return jsonify(_strip_public(_public_failure(snap.get("updated_at")))), 200
+    holdings = []
+    for h in snap.get("holdings", []) or []:
+        holdings.append({
+            "ticker":    h.get("ticker"),
+            "name":      h.get("name"),
+            "qty":       h.get("qty"),
+            "avg_price": h.get("avg_price"),
+            "cur_price": h.get("cur_price"),
+            "eval_amt":  h.get("eval_amt"),
+            "pnl":       h.get("pnl"),
+            "pnl_rate":  h.get("pnl_rate"),
+            "weight":    h.get("weight"),
+            "sector":    h.get("sector"),
+        })
+    return jsonify(_strip_public(
+        {"ok": True, "updated_at": snap.get("updated_at"), "holdings": holdings}
+    ))
+
+
+@app.route("/api/public/sectors")
+def api_public_sectors():
+    """평가금액 기준 섹터 비중 (sector / eval_amt / weight 만)."""
+    snap = _public_snapshot_or_none()
+    if not snap.get("ok"):
+        return jsonify(_strip_public(_public_failure(snap.get("updated_at")))), 200
+    sectors = [
+        {"sector": s.get("sector"), "eval_amt": s.get("eval_amt"), "weight": s.get("weight")}
+        for s in (snap.get("sectors") or [])
+    ]
+    return jsonify(_strip_public(
+        {"ok": True, "updated_at": snap.get("updated_at"), "sectors": sectors}
+    ))
+
+
+@app.route("/api/public/performance")
+def api_public_performance():
+    """일별 청산 손익. 매수만 있는 날에도 차트가 비지 않도록 오늘=0 패딩 (db_reader 가 처리)."""
+    try:
+        rows = get_daily_pnl()
+    except Exception:
+        return jsonify(_strip_public(_public_failure())), 200
+    perf = [
+        {"date": r.get("date"), "pnl": r.get("pnl", 0), "count": r.get("count", 0)}
+        for r in rows
+    ]
+    return jsonify(_strip_public({"ok": True, "performance": perf}))
+
+
+@app.route("/api/public/recent-fills")
+def api_public_recent_fills():
+    """체결/부분체결만 공개. 거절·차단·미체결·취소·SENT 모두 제외, 내부 판단 근거(reason)·broker_ord_no·reject_msg 전부 비노출."""
+    try:
+        all_orders = get_orders(limit=100) or []
+    except Exception:
+        return jsonify(_strip_public(_public_failure())), 200
+    fills = []
+    for o in all_orders:
+        cat = (o.get("status_category") or "").lower()
+        if cat not in ("filled", "partial"):
+            continue
+        fills.append({
+            "timestamp":      o.get("timestamp"),
+            "ticker":         o.get("ticker"),
+            "order_type":     o.get("order_type"),
+            "qty":            o.get("qty"),
+            "filled_qty":     o.get("filled_qty"),
+            "price":          o.get("price"),
+            "avg_fill_price": o.get("avg_fill_price"),
+            "status_label":   o.get("status_label"),
+        })
+        if len(fills) >= 30:
+            break
+    return jsonify(_strip_public({"ok": True, "fills": fills}))
 
 
 # ── 차트 API ─────────────────────────────────────
@@ -556,7 +877,7 @@ _foreign_ai_lock = __import__("threading").Lock()
 _foreign_ai_state = {"running": False, "started_at": None}
 
 @app.route("/api/run_foreign_ai")
-@admin_required
+@login_required
 def api_run_foreign_ai():
     """
     해외주식 AI 분석 스크립트 실행 — 블로킹.

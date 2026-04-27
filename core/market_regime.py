@@ -51,7 +51,6 @@ class MarketRegimeAnalyzer:
     def _classify(self) -> MarketRegime:
         try:
             import yfinance as yf
-            import pandas as pd
             ticker = self.INDEX_TICKERS[self.market]
             df = yf.download(ticker, period="6mo", interval="1d",
                              progress=False, auto_adjust=True)

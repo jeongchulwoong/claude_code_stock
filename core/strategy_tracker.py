@@ -12,11 +12,9 @@ DB에 저장하여 대시보드에서 조회 가능.
 
 from __future__ import annotations
 
-import json
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Optional
 
 from loguru import logger
 

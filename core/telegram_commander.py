@@ -26,7 +26,7 @@ import sqlite3
 import threading
 import time
 from datetime import datetime
-from typing import Optional, Callable
+from typing import Callable
 
 import requests
 from loguru import logger
@@ -340,15 +340,13 @@ class TelegramCommander:
 
     def _cmd_resume(self, _: str = "") -> str:
         if self._rm:
-            self._rm._halted = False
-            self._rm._daily_pnl = 0.0
+            self._rm.reset_daily()      # _halted/_daily_pnl/_day_daily_pnl/_long_daily_pnl/통계 일괄 리셋
             logger.info("텔레그램 명령으로 거래 재개")
-        return "▶️ 거래 재개 완료\n일일 손익이 초기화됩니다."
+        return "▶️ 거래 재개 완료\n일일 손익·통계가 초기화됩니다."
 
     def _cmd_stop(self, _: str = "") -> str:
         """프로그램 완전 종료"""
         import os
-        import sys
         logger.critical("텔레그램 명령으로 프로그램 종료 요청")
         self._send("🛑 프로그램 종료 중...\n모든 거래가 중단되고 프로세스가 종료됩니다.")
         # 1초 후 종료 (메시지 전송 시간 확보)

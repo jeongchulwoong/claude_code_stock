@@ -69,10 +69,16 @@ class RiskManager:
         self._cfg      = RISK_CONFIG
         self._cfg_long = LONG_RISK_CONFIG
         self._positions: dict[str, Position] = {}   # ticker → Position (전체)
+        # 합산 손익 (halt 판정 + 외부 backward-compat 노출용)
         self._daily_pnl: float = 0.0
+        # 스타일별 손익 — 단타/장투 검증을 분리하기 위해 분리 집계
+        self._day_daily_pnl:  float = 0.0
+        self._long_daily_pnl: float = 0.0
+        # 단타 트레이드 통계 (일일 리셋)
+        self._day_trade_stats: dict = {"count": 0, "wins": 0, "losses": 0}
         self._halted: bool = False
         self._today: date = date.today()
-        self._consec_losses: int = 0               # 연패 카운터 (일일 리셋)
+        self._consec_losses: int = 0               # 연패 카운터 (일일 리셋, 단타만)
         self._start_of_day_capital: float = 0.0    # 당일 시작 자본 (% halt 기준)
 
         logger.info(
@@ -307,6 +313,73 @@ class RiskManager:
         logger.info("포지션 추가 [{}]: {} x{}주 @{:,.0f} | ATR진입:{:.0f}",
                     style, ticker, qty, price, atr or 0)
 
+    def increment_position(
+        self, ticker: str, name: str, qty: int, price: float,
+        style: str = STYLE_DAY, atr: float = 0.0,
+    ) -> None:
+        """
+        부분 체결 누적용 — 기존 포지션이면 가중평균으로 평단·수량 갱신, 없으면 신규 생성.
+        ATR/style 은 신규 생성 시에만 사용. 기존 포지션의 진입 ATR/style 은 보존.
+        """
+        if ticker not in self._positions:
+            self.add_position(ticker, name, qty, price, style=style, atr=atr)
+            return
+        pos = self._positions[ticker]
+        if qty <= 0:
+            return
+        total_cost = pos.qty * pos.avg_price + qty * price
+        new_qty    = pos.qty + qty
+        pos.avg_price = total_cost / new_qty if new_qty > 0 else pos.avg_price
+        pos.qty = new_qty
+        if price > pos.high_price:
+            pos.high_price = price
+        logger.info(
+            "포지션 증분 [{}]: {} +{}주 @{:,.0f} → 누적 {}주 @{:,.2f}",
+            pos.style, ticker, qty, price, pos.qty, pos.avg_price,
+        )
+
+    def partial_close(self, ticker: str, qty: int, sell_price: float) -> Optional[float]:
+        """
+        부분 매도 — 일부 수량만 청산하고 비례 손익을 실현. 잔량이 0이 되면 완전 청산 처리.
+        반환: 이번 부분 청산의 실현 손익 (없으면 None).
+        """
+        if ticker not in self._positions:
+            return None
+        pos = self._positions[ticker]
+        sell_qty = min(int(qty), pos.qty)
+        if sell_qty <= 0:
+            return None
+        pnl = (sell_price - pos.avg_price) * sell_qty
+        self._daily_pnl += pnl
+        if pos.style == STYLE_DAY:
+            self._day_daily_pnl += pnl
+        else:
+            self._long_daily_pnl += pnl
+
+        pos.qty -= sell_qty
+        fully_closed   = pos.qty <= 0
+        style_at_close = pos.style
+
+        if fully_closed:
+            del self._positions[ticker]
+            if style_at_close == STYLE_DAY:
+                self._day_trade_stats["count"] += 1
+                if pnl >= 0:
+                    self._day_trade_stats["wins"]   += 1
+                    self._consec_losses = 0
+                else:
+                    self._day_trade_stats["losses"] += 1
+                    self._consec_losses += 1
+            self._check_daily_halt()
+
+        logger.info(
+            "부분 매도 [{}]: {} {}주 @{:,.0f} → 잔량 {} | pnl:{:+,.0f}원 (단타누적:{:+,.0f}/장투누적:{:+,.0f})",
+            style_at_close, ticker, sell_qty, sell_price,
+            0 if fully_closed else pos.qty, pnl,
+            self._day_daily_pnl, self._long_daily_pnl,
+        )
+        return pnl
+
     def remove_position(self, ticker: str, sell_price: float) -> Optional[float]:
         """포지션 제거 후 실현 손익을 반환한다."""
         if ticker not in self._positions:
@@ -316,6 +389,17 @@ class RiskManager:
         pnl = (sell_price - pos.avg_price) * pos.qty
         self._daily_pnl += pnl
 
+        # 스타일별 손익 분리 — 단타/장투 검증을 따로 보기 위함
+        if pos.style == STYLE_DAY:
+            self._day_daily_pnl += pnl
+            self._day_trade_stats["count"]  += 1
+            if pnl >= 0:
+                self._day_trade_stats["wins"]   += 1
+            else:
+                self._day_trade_stats["losses"] += 1
+        else:
+            self._long_daily_pnl += pnl
+
         # 연패 카운터 (단타만 카운트)
         if pos.style == STYLE_DAY:
             if pnl < 0:
@@ -324,8 +408,10 @@ class RiskManager:
                 self._consec_losses = 0
 
         logger.info(
-            "포지션 청산: {} | 손익:{:+,.0f}원 | 일누계:{:+,.0f}원 | 연패:{}",
-            ticker, pnl, self._daily_pnl, self._consec_losses,
+            "포지션 청산 [{}]: {} | 손익:{:+,.0f}원 | 일누계:{:+,.0f}원 (단타:{:+,.0f} 장투:{:+,.0f}) | 연패:{}",
+            pos.style, ticker, pnl,
+            self._daily_pnl, self._day_daily_pnl, self._long_daily_pnl,
+            self._consec_losses,
         )
         self._check_daily_halt()
         return pnl
@@ -333,39 +419,72 @@ class RiskManager:
     def get_positions(self) -> dict[str, Position]:
         return dict(self._positions)
 
-    def get_daily_pnl(self) -> float:
+    def get_daily_pnl(self, style: Optional[str] = None) -> float:
+        """
+        일일 실현 손익. style=None 이면 합산 (backward-compat).
+        style="daytrading" / "longterm" 으로 분리 조회 가능.
+        """
+        if style == STYLE_DAY:
+            return self._day_daily_pnl
+        if style == STYLE_LONG:
+            return self._long_daily_pnl
         return self._daily_pnl
+
+    def get_day_trade_stats(self) -> dict:
+        """단타 트레이드 통계 — count/wins/losses (일일 리셋)."""
+        s = dict(self._day_trade_stats)
+        cnt = s.get("count", 0)
+        s["winrate"] = (s.get("wins", 0) / cnt) if cnt > 0 else 0.0
+        s["pnl"]     = self._day_daily_pnl
+        return s
 
     def is_halted(self) -> bool:
         return self._halted
 
+    def reset_daily(self) -> None:
+        """일일 손익·통계 강제 리셋 (텔레그램 /resume 등에서 호출)."""
+        self._daily_pnl       = 0.0
+        self._day_daily_pnl   = 0.0
+        self._long_daily_pnl  = 0.0
+        self._day_trade_stats = {"count": 0, "wins": 0, "losses": 0}
+        self._consec_losses   = 0
+        self._halted          = False
+        logger.info("[수동] 일일 손익·통계 강제 리셋")
+
     # ── 내부 헬퍼 ────────────────────────────
 
     def _check_daily_halt(self) -> None:
-        # % 기반 한도 우선, 없으면 원 기반 한도 사용
+        """
+        단타 일손실 한도 — 단타 PnL(_day_daily_pnl) 기준으로 판정.
+        장투는 별도 정책으로 두기 위해 합산 PnL 이 아닌 단타 PnL 만 본다.
+        """
         pct_limit = self._cfg.get("daily_loss_limit_pct")
         if pct_limit is not None and self._start_of_day_capital > 0:
-            abs_limit = self._start_of_day_capital * pct_limit   # pct_limit은 -0.02 형태
-            if self._daily_pnl <= abs_limit:
+            abs_limit = self._start_of_day_capital * pct_limit   # 예: -0.02
+            if self._day_daily_pnl <= abs_limit:
                 self._halted = True
                 logger.critical(
-                    "⛔ 일일 손실 한도(%) 초과! 손실:{:+,.0f}원 ({:.2%} of {:,.0f})",
-                    self._daily_pnl, self._daily_pnl / self._start_of_day_capital,
+                    "⛔ 단타 일손실 한도(%) 초과! 단타손실:{:+,.0f}원 ({:.2%} of {:,.0f})",
+                    self._day_daily_pnl,
+                    self._day_daily_pnl / self._start_of_day_capital,
                     self._start_of_day_capital,
                 )
                 return
-        if self._daily_pnl <= self._cfg["daily_loss_limit"]:
+        if self._day_daily_pnl <= self._cfg["daily_loss_limit"]:
             self._halted = True
             logger.critical(
-                "⛔ 일일 손실 한도 초과! 거래 자동 중단 | 손실:{:+,.0f}원",
-                self._daily_pnl,
+                "⛔ 단타 일손실 한도 초과! 거래 자동 중단 | 단타손실:{:+,.0f}원",
+                self._day_daily_pnl,
             )
 
     def _reset_if_new_day(self) -> None:
         today = date.today()
         if today != self._today:
-            logger.info("날짜 변경 — 일일 손익·중단·연패 초기화")
+            logger.info("날짜 변경 — 일일 손익·중단·연패·단타통계 초기화")
             self._today = today
-            self._daily_pnl = 0.0
+            self._daily_pnl       = 0.0
+            self._day_daily_pnl   = 0.0
+            self._long_daily_pnl  = 0.0
+            self._day_trade_stats = {"count": 0, "wins": 0, "losses": 0}
             self._halted = False
             self._consec_losses = 0

@@ -14,14 +14,13 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, date
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 from loguru import logger
 
-from config import DB_PATH, RISK_CONFIG
+from config import DB_PATH
 
 # ── 데이터 구조 ───────────────────────────────
 

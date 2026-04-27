@@ -13,7 +13,7 @@ tests/verify_all.py — 전체 시스템 통합 검증
   9) composite_backtest (offline yfinance)
 """
 from __future__ import annotations
-import sys, os, traceback
+import sys, traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

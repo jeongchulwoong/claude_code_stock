@@ -357,63 +357,6 @@ class MarketScreener:
         c.expected_score = round(max(0.0, min(raw, 100.0)), 1)
         c.quality_score = round(max(0.0, min(tech + fund + setup_bonus, 100.0)), 1)
         return c.expected_score
-        """
-        30년차 퀀트 가중합 (거래비용 + R:R 보정 포함):
-          - Technical 40%
-          - Fundamental: PASS +25 / FAIL -30
-          - AI 35% (BUY×0.35 / SELL=-25 / HOLD×0.10)
-          - Consistency bonus +5 (3중 통과)
-          - 거래비용 패널티 -8 (라운드트립 0.4% 감안)
-          - R:R 미달 시 자동 -15 (ATR 기반 SL/TP 비율)
-        """
-        from config import RISK_CONFIG
-        t = max(0.0, min(c.tech_score, 100.0)) * 0.40
-        f = (25.0 if c.fund_passed else -30.0)
-        a = 0.0
-        if c.ai_action == "BUY":
-            a = c.ai_score * 0.35
-        elif c.ai_action == "SELL":
-            a = -25.0
-        elif c.ai_action == "HOLD":
-            a = c.ai_score * 0.10
-        bonus = 5.0 if (c.tech_score >= 60 and c.fund_passed and c.ai_action == "BUY" and c.ai_score >= 70) else 0.0
-
-        # ── 적응형 거래비용 패널티 (ATR 비례) ──────────
-        # ATR% 가 낮을수록 0.4% 비용이 차지하는 비중이 큼 → 더 큰 패널티.
-        # 예: ATR 1% 면 비용 0.4% = 수익여력 40% 잠식, ATR 5% 면 8% 잠식
-        atr_pct = float(getattr(c, "atr_pct", 0.0)) if hasattr(c, "atr_pct") else 0.0
-        if atr_pct == 0.0 and c.atr_at_screening and c.current_price:
-            atr_pct = c.atr_at_screening / c.current_price * 100
-        if   atr_pct >= 3.0: cost_penalty = -6.0    # 충분한 변동성
-        elif atr_pct >= 2.0: cost_penalty = -10.0
-        elif atr_pct >= 1.0: cost_penalty = -16.0   # 비용이 무거움
-        else:                cost_penalty = -22.0   # ATR 1% 미만 = 단타 부적합
-
-        # ── R:R 게이트 ────────────────────
-        # ATR 기반 손절폭 vs 익절폭. 비용 차감 후 1.8:1 미달이면 자동 -15
-        rr_penalty = 0.0
-        expected_profit_pct = 0.0
-        if c.atr_at_screening and c.current_price:
-            sl_mult = RISK_CONFIG.get("stop_loss_atr_mult", 1.5)
-            tp_mult = RISK_CONFIG.get("take_profit_atr_mult", 3.0)
-            cost = RISK_CONFIG.get("cost_roundtrip_pct", 0.004) * c.current_price
-            sl_dist = c.atr_at_screening * sl_mult + cost   # 비용은 손실 쪽 키움
-            tp_dist = c.atr_at_screening * tp_mult - cost   # 비용은 익절 쪽 줄임
-            expected_profit_pct = round(tp_dist / c.current_price * 100, 2) if c.current_price else 0.0
-            if sl_dist > 0:
-                rr = tp_dist / sl_dist
-                min_rr = RISK_CONFIG.get("min_effective_rr", 1.8)
-                if rr < min_rr:
-                    rr_penalty = -15.0
-                    c.reasons.append(f"⚠️ 실효R:R {rr:.2f} < {min_rr} (-15)")
-            # 기대 수익 < 1% = 비용 차감 후 거의 무의미
-            if 0 < expected_profit_pct < 1.0:
-                rr_penalty -= 8.0
-                c.reasons.append(f"⚠️ 기대수익 {expected_profit_pct}% < 1% (-8)")
-
-        if c.ai_score == 0 and not c.ai_action:
-            return round(t + f + cost_penalty + rr_penalty, 1)
-        return round(t + f + a + bonus + cost_penalty + rr_penalty, 1)
 
     # ── 1차 스코어 평가 ───────────────────────
 
