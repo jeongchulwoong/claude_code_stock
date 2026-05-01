@@ -1,0 +1,83 @@
+/* Phase F6 — Motion utilities + keyframes. */
+
+@keyframes qd-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes qd-fade-slide {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes qd-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes qd-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes qd-pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
+@keyframes qd-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Stagger entry — children 가 차례로 fade-slide. n=1..12 */
+.qd-stagger > * {
+  opacity: 0;
+  animation: qd-fade-slide var(--qd-dur-base) var(--qd-ease-out) both;
+}
+.qd-stagger > *:nth-child(1)  { animation-delay: calc(var(--qd-dur-stagger) * 0); }
+.qd-stagger > *:nth-child(2)  { animation-delay: calc(var(--qd-dur-stagger) * 1); }
+.qd-stagger > *:nth-child(3)  { animation-delay: calc(var(--qd-dur-stagger) * 2); }
+.qd-stagger > *:nth-child(4)  { animation-delay: calc(var(--qd-dur-stagger) * 3); }
+.qd-stagger > *:nth-child(5)  { animation-delay: calc(var(--qd-dur-stagger) * 4); }
+.qd-stagger > *:nth-child(6)  { animation-delay: calc(var(--qd-dur-stagger) * 5); }
+.qd-stagger > *:nth-child(7)  { animation-delay: calc(var(--qd-dur-stagger) * 6); }
+.qd-stagger > *:nth-child(8)  { animation-delay: calc(var(--qd-dur-stagger) * 7); }
+.qd-stagger > *:nth-child(9)  { animation-delay: calc(var(--qd-dur-stagger) * 8); }
+.qd-stagger > *:nth-child(10) { animation-delay: calc(var(--qd-dur-stagger) * 9); }
+.qd-stagger > *:nth-child(11) { animation-delay: calc(var(--qd-dur-stagger) * 10); }
+.qd-stagger > *:nth-child(12) { animation-delay: calc(var(--qd-dur-stagger) * 11); }
+.qd-stagger > *:nth-child(n+13) { animation-delay: calc(var(--qd-dur-stagger) * 11); }
+
+.qd-fade-in    { animation: qd-fade-in    var(--qd-dur-base) var(--qd-ease-out) both; }
+.qd-fade-slide { animation: qd-fade-slide var(--qd-dur-base) var(--qd-ease-out) both; }
+.qd-slide-up   { animation: qd-slide-up   var(--qd-dur-slow) var(--qd-ease-out) both; }
+.qd-scale-in   { animation: qd-scale-in   var(--qd-dur-base) var(--qd-ease-out) both; }
+.qd-pulse-soft { animation: qd-pulse-soft 1.6s var(--qd-ease) infinite; }
+
+/* Skeleton loader. */
+.qd-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--qd-surface-2) 0%,
+    var(--qd-hover) 50%,
+    var(--qd-surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: qd-shimmer 1.4s linear infinite;
+  border-radius: var(--qd-radius);
+  display: block;
+}
+.qd-skeleton-line {
+  height: 14px;
+  width: 100%;
+  margin: 4px 0;
+}
+.qd-skeleton-card {
+  height: 100px;
+}
+
+/* Number transition — 값이 바뀔 때 부드럽게. */
+.qd-number-transition {
+  transition: color var(--qd-dur-base) var(--qd-ease);
+}

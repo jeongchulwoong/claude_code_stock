@@ -1,0 +1,96 @@
+/* Phase F6 — Design tokens (light + dark via prefers-color-scheme). */
+
+:root {
+  /* Color — light. */
+  --qd-bg:        #F7F8FA;
+  --qd-surface:   #FFFFFF;
+  --qd-surface-2: #F1F3F5;
+  --qd-hover:     #F9FAFB;
+  --qd-border:    #E1E5EA;
+  --qd-border-2:  #D7DCE2;
+  --qd-text:      #111827;
+  --qd-text-2:    #4B5563;
+  --qd-text-3:    #9CA3AF;
+  --qd-text-subtle: #6B7280;
+
+  --qd-blue:    #2563EB;
+  --qd-blue-bg: #EBF2FF;
+  --qd-green:   #059669;
+  --qd-green-bg:#ECFDF5;
+  --qd-red:     #DC2626;
+  --qd-red-bg:  #FEF2F2;
+  --qd-amber:   #D97706;
+  --qd-amber-bg:#FFFBEB;
+  --qd-slate:   #64748B;
+
+  --ok:      var(--qd-green);
+  --warning: var(--qd-amber);
+  --danger:  var(--qd-red);
+  --muted:   var(--qd-slate);
+
+  /* Geometry. */
+  --qd-radius:    8px;
+  --qd-radius-lg: 12px;
+  --qd-radius-pill: 999px;
+  --qd-pad-sm: 8px;
+  --qd-pad:    14px;
+  --qd-pad-lg: 20px;
+
+  /* Shadows. */
+  --qd-shadow-1: 0 1px 2px rgba(16,24,40,.04);
+  --qd-shadow-2: 0 8px 24px rgba(16,24,40,.06);
+  --qd-shadow-3: 0 16px 40px rgba(16,24,40,.10);
+
+  /* Typography. */
+  --qd-font: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --qd-font-num: 'JetBrains Mono', 'SFMono-Regular', Consolas, Menlo, monospace;
+  --qd-fs-xs: 11px;
+  --qd-fs-sm: 12.5px;
+  --qd-fs-md: 14px;
+  --qd-fs-lg: 18px;
+  --qd-fs-xl: 24px;
+  --qd-fs-hero: 40px;
+
+  /* Motion. */
+  --qd-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --qd-ease-out: cubic-bezier(0.0, 0, 0.2, 1);
+  --qd-ease-in:  cubic-bezier(0.4, 0, 1, 1);
+  --qd-dur-fast:  120ms;
+  --qd-dur-base:  200ms;
+  --qd-dur-slow:  320ms;
+  --qd-dur-stagger: 60ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --qd-bg:        #0E1116;
+    --qd-surface:   #161A22;
+    --qd-surface-2: #1C2230;
+    --qd-hover:     #1F2533;
+    --qd-border:    #232A38;
+    --qd-border-2:  #2D3447;
+    --qd-text:      #E5E7EB;
+    --qd-text-2:    #B1B6C0;
+    --qd-text-3:    #6B7280;
+    --qd-text-subtle: #95A0B0;
+
+    --qd-blue-bg:  rgba(37,99,235,.16);
+    --qd-green-bg: rgba(5,150,105,.16);
+    --qd-red-bg:   rgba(220,38,38,.16);
+    --qd-amber-bg: rgba(217,119,6,.16);
+
+    --qd-shadow-1: 0 1px 2px rgba(0,0,0,.30);
+    --qd-shadow-2: 0 8px 24px rgba(0,0,0,.40);
+    --qd-shadow-3: 0 16px 40px rgba(0,0,0,.55);
+  }
+}
+
+/* Reduced motion 사용자 존중. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --qd-dur-fast: 0ms;
+    --qd-dur-base: 0ms;
+    --qd-dur-slow: 0ms;
+    --qd-dur-stagger: 0ms;
+  }
+}

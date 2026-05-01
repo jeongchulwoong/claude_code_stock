@@ -1,19 +1,19 @@
-// Phase F5 — Client entry. #client-react-root 만 mount.
+// Phase F6 — Login entry. Jinja login.html 의 #login-react-root 에 mount.
 import '@shared/styles/base.css';
 import '@shared/styles/motion.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
+import LoginApp from './LoginApp';
 
-const container = document.getElementById('client-react-root');
+const container = document.getElementById('login-react-root');
 if (container) {
   try {
     createRoot(container).render(
       <StrictMode>
-        <App />
+        <LoginApp />
       </StrictMode>,
     );
   } catch (err) {
-    console.error('[client] React mount failed; Jinja fallback remains:', err);
+    console.error('[login] React mount failed; Jinja fallback remains:', err);
   }
 }

@@ -19,6 +19,7 @@ export default defineConfig({
       input: {
         admin:  resolve(__dirname, 'apps/admin/index.html'),
         client: resolve(__dirname, 'apps/client/index.html'),
+        login:  resolve(__dirname, 'apps/login/index.html'),
       },
       output: {
         manualChunks(id) {

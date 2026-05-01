@@ -73,6 +73,86 @@ def _read_manifest() -> dict | None:
         return None
 
 
+def _frontend_login_asset_url(path: str) -> str:
+    """Login asset 은 별도 public route 사용 (/login 페이지가 익명 접근이라)."""
+    return f"/frontend-login-dist/{path.lstrip('/')}"
+
+
+def _vite_login_assets() -> dict[str, list[str]]:
+    """F6 — login React entry 의 JS/CSS URL list (/frontend-login-dist/ prefix).
+    flag OFF 거나 manifest 부재면 빈 list — Jinja /login form fallback.
+    """
+    if not _frontend_react_enabled():
+        return {"js": [], "css": []}
+    manifest = _read_manifest()
+    if manifest is None:
+        return {"js": [], "css": []}
+    entry = None
+    for key in ("apps/login/index.html", "apps/login/main.tsx"):
+        if key in manifest:
+            entry = manifest[key]
+            break
+    if not entry:
+        return {"js": [], "css": []}
+    js_files: list[str] = []
+    css_files: list[str] = []
+    seen: set[str] = set()
+
+    def collect(item: dict) -> None:
+        file = item.get("file")
+        if isinstance(file, str) and file.endswith(".js") and file not in seen:
+            if "admin" in file or "client" in file:
+                return   # 안전 — login bundle 이 admin/client chunk 를 import 하면 차단.
+            seen.add(file)
+            js_files.append(_frontend_login_asset_url(file))
+        for css in item.get("css", []) or []:
+            if isinstance(css, str) and css not in css_files and "admin" not in css and "client" not in css:
+                css_files.append(_frontend_login_asset_url(css))
+        for imp in item.get("imports", []) or []:
+            child = manifest.get(imp)
+            if isinstance(child, dict):
+                collect(child)
+
+    collect(entry)
+    return {"js": js_files, "css": css_files}
+
+
+def _vite_login_public_allowlist() -> set[str]:
+    """`/frontend-login-dist/<path>` 화이트리스트 — login + vendor chunk 만."""
+    manifest = _read_manifest()
+    if manifest is None:
+        return set()
+    entry = None
+    for key in ("apps/login/index.html", "apps/login/main.tsx"):
+        if key in manifest:
+            entry = manifest[key]
+            break
+    if not entry:
+        return set()
+    allow: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(item: dict) -> None:
+        file = item.get("file")
+        if isinstance(file, str):
+            if file in visited:
+                return
+            visited.add(file)
+            if "admin" in file or "client" in file or file.endswith(".map"):
+                return
+            allow.add(file)
+        for css in item.get("css", []) or []:
+            if isinstance(css, str) and "admin" not in css and "client" not in css and not css.endswith(".map"):
+                allow.add(css)
+        for imp in item.get("imports", []) or []:
+            child = manifest.get(imp)
+            if isinstance(child, dict):
+                visit(child)
+
+    visit(entry)
+    return allow
+
+
 def _vite_admin_assets() -> dict[str, list[str]]:
     """F3/F4 — admin React entry 의 JS/CSS URL list. flag OFF 거나 manifest 부재면 빈 list."""
     if not _frontend_react_enabled():
@@ -220,13 +300,40 @@ except ImportError:
 
 
 # ── 인증 데코레이터 ─────────────────────────────
+#
+# 정책: 기존 Flask session-cookie 인증을 우선 사용 + JWT Bearer 토큰 fallback.
+# 두 경로 모두 통과 시 같은 권한. JWT 는 React UI 에서 fetch 하는 API 용.
+
+from core.auth_jwt import extract_bearer, verify_token   # noqa: E402  -- post-app init
+
+
+def _resolve_auth() -> tuple[bool, str | None]:
+    """현재 요청의 인증 정보 결정.
+
+    Returns:
+      (authenticated: bool, role: 'admin'|'client'|None)
+      session 우선 → JWT fallback. 둘 다 실패면 (False, None).
+    """
+    # 1) session.
+    if session.get('authenticated'):
+        role = session.get('role')
+        if role in ('admin', 'client'):
+            return True, str(role)
+    # 2) JWT.
+    token = extract_bearer(request.headers.get('Authorization'))
+    if token:
+        claims = verify_token(token)
+        if claims is not None:
+            return True, claims.role
+    return False, None
+
 
 def login_required(f):
-    """로그인된 사용자(admin 또는 client)면 접근 허용."""
+    """admin 또는 client 모두 통과."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('authenticated'):
-            # API 호출이면 401 JSON, 페이지면 로그인 리다이렉트
+        ok, _role = _resolve_auth()
+        if not ok:
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "error": "인증 필요"}), 401
             return redirect(url_for('login'))
@@ -235,14 +342,15 @@ def login_required(f):
 
 
 def admin_required(f):
-    """admin 만 접근 — client 는 403."""
+    """admin 만 통과 — client 는 403."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('authenticated'):
+        ok, role = _resolve_auth()
+        if not ok:
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "error": "인증 필요"}), 401
             return redirect(url_for('login'))
-        if session.get('role') != 'admin':
+        if role != 'admin':
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "error": "관리자 권한 필요"}), 403
             return render_template("login.html",
@@ -266,8 +374,17 @@ def login():
             session['authenticated'] = True
             session['role']          = 'client'
             return redirect(url_for('advanced_dashboard'))
-        return render_template("login.html", error="비밀번호가 틀렸습니다")
-    return render_template("login.html")
+        return render_template(
+            "login.html",
+            error="비밀번호가 틀렸습니다",
+            frontend_react_enabled=_frontend_react_enabled(),
+            frontend_login_assets=_vite_login_assets(),
+        )
+    return render_template(
+        "login.html",
+        frontend_react_enabled=_frontend_react_enabled(),
+        frontend_login_assets=_vite_login_assets(),
+    )
 
 @app.route("/logout")
 def logout():
@@ -276,11 +393,90 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ── JWT 인증 API (React UI 용) ────────────────────────────────
+#
+# 정책:
+#   - POST /api/auth/login: { password } → { access_token, role, expires_at, ttl_sec }
+#     비번 검증 실패 시 401. 동시에 server-side session 도 설정 (호환성).
+#   - GET  /api/auth/me:   Bearer 또는 session → { role, authenticated }
+#     인증 실패 시 401.
+#   - 본 라우트들은 React 가 호출. 기존 /login HTML form 은 그대로 동작.
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    from core.auth_jwt import issue_token
+    data = request.get_json(silent=True) or {}
+    password = str(data.get("password") or "")
+    if not password:
+        return jsonify({"ok": False, "error": "비밀번호 필수"}), 400
+
+    role: str | None = None
+    if password == DASHBOARD_ADMIN_PASSWORD:
+        role = "admin"
+    elif DASHBOARD_CLIENT_PASSWORD and password == DASHBOARD_CLIENT_PASSWORD:
+        role = "client"
+    if role is None:
+        return jsonify({"ok": False, "error": "비밀번호가 틀렸습니다"}), 401
+
+    try:
+        issued = issue_token(role)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"토큰 발급 실패: {e}"}), 500
+
+    # session 도 설정 (Jinja fallback 호환).
+    session['authenticated'] = True
+    session['role']          = role
+
+    return jsonify({
+        "ok": True,
+        "access_token": issued.access_token,
+        "token_type":   "Bearer",
+        "role":         role,
+        "expires_at":   issued.expires_at.isoformat(),
+        "issued_at":    issued.issued_at.isoformat(),
+        "ttl_sec":      issued.ttl_sec,
+    })
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_auth_me():
+    ok, role = _resolve_auth()
+    if not ok:
+        return jsonify({"ok": False, "authenticated": False, "error": "인증 필요"}), 401
+    return jsonify({"ok": True, "authenticated": True, "role": role})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    """server-side session 만 비운다 — JWT 는 client 가 폐기.
+    JWT blacklist 미구현 (단일 secret + 짧은 만료 정책).
+    """
+    session.pop('authenticated', None)
+    session.pop('role', None)
+    return jsonify({"ok": True})
+
+
 @app.route("/frontend-dist/<path:filename>")
 @admin_required
 def frontend_dist(filename: str):
     """F3/F4 — admin React asset 라우트. admin 세션만 통과."""
     return send_from_directory(_FRONTEND_DIST, filename)
+
+
+@app.route("/frontend-login-dist/<path:filename>")
+def frontend_login_dist(filename: str):
+    """F6 — login React asset 라우트. 익명 접근 가능 (login 페이지 자체가 익명).
+    flag OFF 거나 allowlist 외 경로면 404. .map / path traversal 차단.
+    """
+    if not _frontend_react_enabled():
+        return jsonify({"ok": False, "error": "react disabled"}), 404
+    norm = filename.replace("\\", "/").lstrip("/")
+    if ".." in norm.split("/") or norm.endswith(".map"):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    allow = _vite_login_public_allowlist()
+    if norm not in allow:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return send_from_directory(_FRONTEND_DIST, norm)
 
 
 @app.route("/frontend-public-dist/<path:filename>")

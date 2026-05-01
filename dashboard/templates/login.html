@@ -3,160 +3,183 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>로그인 - AI 자동매매 대시보드</title>
+  <meta name="theme-color" content="#111827">
+  <title>Quant Desk — Sign in</title>
+  <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/tokens.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
-      padding: 20px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
     }
-    .login-container {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      padding: 40px;
+
+    .panel {
       width: 100%;
       max-width: 400px;
-      animation: slideUp 0.5s ease;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 32px 32px 28px;
     }
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(30px); }
-      to { opacity: 1; transform: translateY(0); }
+
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 22px;
     }
-    .logo {
-      text-align: center;
-      margin-bottom: 30px;
+    .brand-mark {
+      width: 32px; height: 32px;
+      background: var(--text);
+      color: var(--surface);
+      border-radius: var(--radius-md);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px; letter-spacing: -.3px;
     }
-    .logo-icon {
-      font-size: 48px;
-      margin-bottom: 10px;
+    .brand-name {
+      font-size: 15px; font-weight: 600; letter-spacing: -.2px;
+      line-height: 1;
     }
+    .brand-sub {
+      font-size: 11px; color: var(--text-subtle); margin-top: 4px;
+      letter-spacing: .4px; text-transform: uppercase;
+    }
+
     h1 {
-      font-size: 24px;
-      color: #333;
-      text-align: center;
-      margin-bottom: 10px;
+      font-size: 13px; font-weight: 500;
+      color: var(--text-muted); margin-bottom: 14px;
+      letter-spacing: .1px;
     }
-    .subtitle {
-      text-align: center;
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 30px;
-    }
-    .form-group {
-      margin-bottom: 20px;
-    }
+
     label {
       display: block;
-      color: #555;
-      font-size: 14px;
-      font-weight: 500;
-      margin-bottom: 8px;
+      font-size: 12px; font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      letter-spacing: .1px;
     }
     input[type="password"] {
       width: 100%;
-      padding: 12px 16px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      font-size: 16px;
-      transition: all 0.3s;
+      padding: 11px 13px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      color: var(--text);
+      font-family: var(--font-sans);
+      transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
     }
     input[type="password"]:focus {
       outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(29,78,216,.12);
     }
-    .btn-login {
+
+    .btn {
       width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      margin-top: 18px;
+      padding: 11px;
+      background: var(--text);
+      color: var(--surface);
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      letter-spacing: -.1px;
+      transition: background .15s var(--ease);
     }
-    .btn-login:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    .btn:hover  { background: #1f2937; }
+    .btn:active { background: #0f1623; }
+
+    .alert {
+      background: var(--danger-bg);
+      color: var(--danger);
+      padding: 9px 12px;
+      border-radius: var(--radius-md);
+      margin-bottom: 14px;
+      font-size: 12.5px;
+      border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent);
     }
-    .btn-login:active {
-      transform: translateY(0);
+
+    .footer {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 11.5px; color: var(--text-subtle);
+      letter-spacing: .1px;
     }
-    .error {
-      background: #fee;
-      color: #c33;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      text-align: center;
-      border: 1px solid #fcc;
+    /* Phase 15 — 360px / reduced motion */
+    @media (max-width: 380px) {
+      body { padding: 14px; }
+      .panel { padding: 24px 20px 22px; }
     }
-    .info {
-      margin-top: 20px;
-      padding: 12px;
-      background: #f0f4ff;
-      border-radius: 8px;
-      font-size: 13px;
-      color: #555;
-      line-height: 1.6;
-    }
-    .info strong {
-      color: #667eea;
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
     }
   </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="logo">
-      <div class="logo-icon">🤖</div>
-      <h1>AI 자동매매 대시보드</h1>
-      <div class="subtitle">보안 인증이 필요합니다</div>
+  {% if frontend_react_enabled %}
+  <!-- F6 — React JWT 로그인 mount root. flag ON 일 때만 출력. mount 실패 시 아래 Jinja form fallback. -->
+  <div
+    id="login-react-root"
+    class="react-island react-island--login"
+    data-phase="F6"
+    data-fallback="jinja-login"></div>
+  {% endif %}
+  <main class="panel" role="main">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">QD</span>
+      <div>
+        <div class="brand-name">Quant Desk</div>
+        <div class="brand-sub">Operator Console</div>
+      </div>
     </div>
+
+    <h1>Sign in</h1>
 
     {% if error %}
-    <div class="error">{{ error }}</div>
+    <div class="alert" role="alert">비밀번호가 올바르지 않습니다.</div>
     {% endif %}
 
-    <form method="POST" action="/login">
-      <div class="form-group">
-        <label for="password">비밀번호</label>
-        <input
-          type="password"
-          id="password"
-          name="password"
-          placeholder="비밀번호를 입력하세요"
-          autofocus
-          required
-        >
-      </div>
-      <button type="submit" class="btn-login">로그인</button>
+    <form method="POST" action="/login" autocomplete="off">
+      <label for="password">비밀번호</label>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        autofocus
+        required
+        autocomplete="current-password"
+      >
+      <button type="submit" class="btn">로그인</button>
     </form>
 
-    {% if error %}{# error 있을 때만 추가 안내 #}{% endif %}
-    <div class="info">
-      <strong>💡 안내</strong><br>
-      • 받은 비밀번호를 그대로 입력하세요<br>
-      • 관리자 비번 → 전체 기능 / 친구용 비번 → 스크리너·차트·종목만<br>
-      • 로그인 후 세션 유지 (브라우저 종료 시 만료)
+    <div class="footer">
+      Authorized personnel only. Session ends when the browser closes.
     </div>
-  </div>
-
-  <script>
-    // Enter 키로 로그인
-    document.getElementById('password').addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        e.target.form.submit();
-      }
-    });
-  </script>
+  </main>
+{% if frontend_react_enabled and frontend_login_assets %}
+{% for css in frontend_login_assets.css %}
+<link rel="stylesheet" href="{{ css }}">
+{% endfor %}
+{% for js in frontend_login_assets.js %}
+<script type="module" src="{{ js }}"></script>
+{% endfor %}
+<style>
+/* React mount 시 Jinja form 숨기기 (UX — 둘 다 보이지 않게). */
+#login-react-root[data-phase="F6"] ~ main.panel { display: none; }
+</style>
+{% endif %}
 </body>
 </html>

@@ -508,6 +508,15 @@ tbody tr:last-child td{border-bottom:0}
 
 <!-- ② 포트폴리오 탭 -->
 <div id="tab-portfolio" class="panel">
+  {% if frontend_react_enabled %}
+  <!-- F6 — Portfolio React island mount root. flag ON 일 때만 출력. -->
+  <section
+    id="admin-portfolio-react-root"
+    class="react-island react-island--portfolio"
+    data-phase="F6"
+    data-island="admin-portfolio"
+    data-fallback="jinja-portfolio"></section>
+  {% endif %}
   <div class="g4" id="port-kpis">
     <div class="kpi"><div class="kpi-l">평가금액(키움 잔고)</div><div class="kpi-v" id="p-value">—</div><div class="kpi-s" id="p-value-sub">매입금액 —</div></div>
     <div class="kpi"><div class="kpi-l">평가손익(미실현)</div><div class="kpi-v" id="p-pnl">—</div><div class="kpi-s" id="p-pnl-sub">수익률 —</div></div>
