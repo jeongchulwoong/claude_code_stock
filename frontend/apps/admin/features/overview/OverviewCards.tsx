@@ -3,6 +3,7 @@ import type {
   BuyingPowerView,
   DailyLossView,
   DataHealthRow,
+  DaytradeGateView,
   ModeView,
   OrderTotals,
   TraderHealthView,
@@ -104,6 +105,52 @@ export function DataHealthCard({ rows }: DataHealthProps) {
           </li>
         ))}
       </ul>
+    </article>
+  );
+}
+
+interface DaytradeProps { view: DaytradeGateView; }
+
+export function DaytradeGateCard({ view }: DaytradeProps) {
+  const remaining = Math.max(0, view.maxDaily - view.todayEntries);
+  const usePctRaw = view.maxDaily > 0 ? (view.todayEntries / view.maxDaily) * 100 : 0;
+  const usePct = Math.max(0, Math.min(100, usePctRaw));
+  const fillBg =
+    view.tone === 'fail' ? 'var(--qd-red)' :
+    view.tone === 'warn' ? 'var(--qd-amber)' :
+    view.tone === 'ok'   ? 'var(--qd-blue)'  : 'var(--qd-text-3)';
+  return (
+    <article className="qd-card qd-card--span-2" data-card="daytrade-gate">
+      <header className="qd-card-h">단타 게이트</header>
+      <div className="qd-dt-row">
+        <span className="qd-dt-state qd-num" data-tone={view.tone}>{view.stateLabel}</span>
+        {view.openTicker && (
+          <span className="qd-dt-ticker qd-num">{view.openTicker}</span>
+        )}
+        {view.halted && <span className="qd-dt-halt">HALT</span>}
+        {view.snapshotMissing && <span className="qd-dt-stale">snapshot 없음</span>}
+      </div>
+      <div className="qd-dt-bar"><div data-dt-fill style={{ width: `${usePct}%`, background: fillBg }} /></div>
+      <div className="qd-dt-meta">
+        <div className="qd-dt-meta-row">
+          <span>오늘 진입</span>
+          <span className="qd-num">{view.todayEntries} / {view.maxDaily} (남은 {remaining})</span>
+        </div>
+        <div className="qd-dt-meta-row">
+          <span>연속 손실</span>
+          <span className="qd-num" data-tone={view.consecutiveLosses >= view.lossHaltThreshold ? 'fail' : 'muted'}>
+            {view.consecutiveLosses} / {view.lossHaltThreshold}
+          </span>
+        </div>
+        <div className="qd-dt-meta-row">
+          <span>진입 시간</span>
+          <span className="qd-num">{view.entryWindow}</span>
+        </div>
+        <div className="qd-dt-meta-row">
+          <span>강제 청산</span>
+          <span className="qd-num">{view.forceCloseTime}</span>
+        </div>
+      </div>
     </article>
   );
 }

@@ -4,6 +4,7 @@ import { adminApi } from '@shared/api/adminApi';
 import { fetchJson } from '@shared/api/fetchJson';
 import type {
   BalanceResponse,
+  DaytradeStateResponse,
   OrdersResponse,
   ProcessStatusResponse,
   SummaryResponse,
@@ -37,17 +38,19 @@ export function useOverviewPolling(opts: UseOverviewPollingOptions = {}): Overvi
         fetcher<OrdersResponse>(adminApi.orders,               { signal: ctrl.signal }),
         fetcher<SystemStatusResponse>(adminApi.systemStatus,   { signal: ctrl.signal }),
         fetcher<ProcessStatusResponse>(adminApi.processStatus, { signal: ctrl.signal }),
+        fetcher<DaytradeStateResponse>(adminApi.daytradeState, { signal: ctrl.signal }),
       ]);
       if (cancelled) return;
-      const [s, b, o, sys, ps] = results;
+      const [s, b, o, sys, ps, dt] = results;
       const value = (r: PromiseSettledResult<unknown>) =>
         r.status === 'fulfilled' ? r.value : null;
       setSnap({
-        summary: value(s) as SummaryResponse | null,
-        balance: value(b) as BalanceResponse | null,
-        orders:  value(o) as OrdersResponse  | null,
-        system:  value(sys) as SystemStatusResponse | null,
-        process: value(ps)  as ProcessStatusResponse | null,
+        summary:  value(s)   as SummaryResponse | null,
+        balance:  value(b)   as BalanceResponse | null,
+        orders:   value(o)   as OrdersResponse  | null,
+        system:   value(sys) as SystemStatusResponse | null,
+        process:  value(ps)  as ProcessStatusResponse | null,
+        daytrade: value(dt)  as DaytradeStateResponse | null,
         fetchedAt: Date.now(),
         hadError: results.some((r) => r.status === 'fulfilled' && r.value == null)
                   || results.some((r) => r.status === 'rejected'),

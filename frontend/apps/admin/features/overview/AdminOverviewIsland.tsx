@@ -3,6 +3,7 @@ import {
   deriveBuyingPower,
   deriveDailyLoss,
   deriveDataHealth,
+  deriveDaytradeGate,
   deriveMode,
   deriveOrderTotals,
   deriveTraderHealth,
@@ -11,6 +12,7 @@ import {
 import {
   DailyLossCard,
   DataHealthCard,
+  DaytradeGateCard,
   ModeBuyingPowerCard,
   OrderStateCard,
   PnlCard,
@@ -35,8 +37,25 @@ const HEADER_STYLE: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'baseline',
-  margin: '0 0 10px 0',
+  margin: '0 0 12px 0',
+  paddingBottom: 8,
+  borderBottom: '1px solid var(--qd-border)',
   fontSize: 12,
+  color: 'var(--qd-text-3)',
+  letterSpacing: '.3px',
+  textTransform: 'uppercase',
+  fontWeight: 600,
+};
+
+const ERR_BADGE_STYLE: React.CSSProperties = {
+  fontSize: 11,
+  padding: '2px 8px',
+  borderRadius: 999,
+  background: 'var(--qd-amber-bg)',
+  color: 'var(--qd-amber)',
+  textTransform: 'none',
+  letterSpacing: 0,
+  fontWeight: 500,
 };
 
 export default function AdminOverviewIsland(props: AdminOverviewIslandProps) {
@@ -53,6 +72,7 @@ export default function AdminOverviewIsland(props: AdminOverviewIslandProps) {
   const dailyLoss   = deriveDailyLoss(snap);
   const dataHealth  = deriveDataHealth(snap);
   const trader      = deriveTraderHealth(snap);
+  const daytrade    = deriveDaytradeGate(snap);
 
   const evalAmount  = snap.balance?.tot_evlu_amt   ?? null;
   const evalPnl     = snap.balance?.tot_evlt_pl    ?? null;
@@ -70,10 +90,11 @@ export default function AdminOverviewIsland(props: AdminOverviewIslandProps) {
       <header style={HEADER_STYLE}>
         <span>운영 위험 요약 · 읽기 전용</span>
         {snap.hadError && (
-          <span data-error-badge>일부 응답 누락</span>
+          <span data-error-badge style={ERR_BADGE_STYLE}>일부 응답 누락</span>
         )}
       </header>
-      <div style={GRID_STYLE}>
+      <div style={GRID_STYLE} className="qd-stagger">
+        <DaytradeGateCard view={daytrade} />
         <ModeBuyingPowerCard mode={mode} buyingPower={buyingPower} />
         <PnlCard
           evalAmount={evalAmount}

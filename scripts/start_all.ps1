@@ -212,18 +212,18 @@ try {
     if ($reactBuilt) {
         Write-Line "[OK] frontend dist : found ($manifest)"
     } else {
-        Write-Line "[WARN] frontend dist : missing — React UI inactive (Jinja fallback only)"
+        Write-Line "[WARN] frontend dist : missing -- React UI inactive (Jinja fallback only)"
         Write-Line "         Build: cd frontend ; npm install ; npm run build"
     }
     if ($reactFlag) {
-        Write-Line "[OK] FRONTEND_REACT_ENABLED=1 — admin React island will mount"
+        Write-Line "[OK] FRONTEND_REACT_ENABLED=1 -- admin React island will mount"
     } else {
-        Write-Line "[INFO] FRONTEND_REACT_ENABLED off — admin uses Jinja UI"
+        Write-Line "[INFO] FRONTEND_REACT_ENABLED off -- admin uses Jinja UI"
     }
     if ($clientFlag) {
-        Write-Line "[OK] FRONTEND_CLIENT_REACT_ENABLED=1 — /client React island will mount"
+        Write-Line "[OK] FRONTEND_CLIENT_REACT_ENABLED=1 -- /client React island will mount"
     } else {
-        Write-Line "[INFO] FRONTEND_CLIENT_REACT_ENABLED off — /client uses Jinja UI"
+        Write-Line "[INFO] FRONTEND_CLIENT_REACT_ENABLED off -- /client uses Jinja UI"
     }
 
     Stop-ExistingDashboardProcesses
@@ -232,20 +232,20 @@ try {
     if ($cloudflared) {
         Write-Line "[OK] cloudflared : $cloudflared"
     } else {
-        Write-Line "[INFO] cloudflared : not installed — external sharing skipped"
+        Write-Line "[INFO] cloudflared : not installed -- external sharing skipped"
         Write-Line "         Install: winget install --id Cloudflare.cloudflared"
     }
 
-    # ──────────────────────────────────────────────────────────────────
-    # 1) Trader (main.py) — PID lock 기반.
-    # ──────────────────────────────────────────────────────────────────
+    # ----------------------------------------------------------------
+    # 1) Trader (main.py) -- PID lock based.
+    # ----------------------------------------------------------------
 
     if ($SkipTrader) {
         Write-Line ""
-        Write-Line "[SKIP] Trader (-SkipTrader) — UI / watcher / tunnels only"
+        Write-Line "[SKIP] Trader (-SkipTrader) -- UI / watcher / tunnels only"
     } else {
         Write-Line ""
-        Write-Line "[START] Trader (main.py) — logs\main_runtime.log"
+        Write-Line "[START] Trader (main.py) -- logs\main_runtime.log"
         Write-Line "        ! WARNING: live order routing capable. Lock-aware via scripts\start_trader.py"
         & $Python (Join-Path $Root "scripts\start_trader.py") | ForEach-Object { Write-Line $_ }
         if ($LASTEXITCODE -ge 2) {

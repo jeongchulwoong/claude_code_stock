@@ -70,10 +70,86 @@ html, body {
 [data-pnl="zero"] { color: var(--qd-text-3); }
 
 /* Card-specific styles for overview cards. */
+.qd-card--span-2 { grid-column: span 2; }
+
+@media (max-width: 700px) {
+  .qd-card--span-2 { grid-column: span 1; }
+}
+
 .qd-card-mode {
   font-size: var(--qd-fs-lg);
   font-weight: 700;
   letter-spacing: -.2px;
+}
+
+/* Daytrade gate card — banner replacement for the Jinja "단타 게이트" panel. */
+.qd-dt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.qd-dt-state {
+  font-size: var(--qd-fs-lg);
+  font-weight: 700;
+  letter-spacing: -.2px;
+}
+.qd-dt-ticker {
+  font-size: var(--qd-fs-sm);
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--qd-radius);
+  background: var(--qd-blue-bg);
+  color: var(--qd-blue);
+}
+.qd-dt-halt {
+  font-size: var(--qd-fs-xs);
+  font-weight: 700;
+  letter-spacing: .4px;
+  padding: 2px 8px;
+  border-radius: var(--qd-radius);
+  background: var(--qd-red-bg);
+  color: var(--qd-red);
+  animation: qd-pulse-soft 1.6s var(--qd-ease) infinite;
+}
+.qd-dt-stale {
+  font-size: var(--qd-fs-xs);
+  padding: 2px 6px;
+  border-radius: var(--qd-radius);
+  background: var(--qd-amber-bg);
+  color: var(--qd-amber);
+}
+.qd-dt-bar {
+  height: 6px;
+  background: var(--qd-surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 6px 0 8px;
+}
+.qd-dt-bar > div {
+  height: 100%;
+  transition: width var(--qd-dur-slow) var(--qd-ease),
+              background var(--qd-dur-base) var(--qd-ease);
+}
+.qd-dt-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 16px;
+}
+.qd-dt-meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--qd-fs-sm);
+}
+.qd-dt-meta-row > span:first-child {
+  color: var(--qd-text-3);
+}
+.qd-dt-meta-row > span:last-child {
+  color: var(--qd-text);
+  font-weight: 500;
+}
+@media (max-width: 540px) {
+  .qd-dt-meta { grid-template-columns: 1fr; }
 }
 .qd-card-bp {
   font-size: var(--qd-fs-xl);

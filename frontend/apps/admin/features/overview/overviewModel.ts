@@ -2,6 +2,7 @@
 
 import type {
   BalanceResponse,
+  DaytradeStateResponse,
   OrdersResponse,
   ProcessStatusResponse,
   SummaryResponse,
@@ -11,21 +12,23 @@ import type {
 export type Tone = 'ok' | 'warn' | 'fail' | 'muted';
 
 export interface OverviewSnapshot {
-  summary: SummaryResponse | null;
-  balance: BalanceResponse | null;
-  orders:  OrdersResponse  | null;
-  system:  SystemStatusResponse | null;
-  process: ProcessStatusResponse | null;
+  summary:  SummaryResponse | null;
+  balance:  BalanceResponse | null;
+  orders:   OrdersResponse  | null;
+  system:   SystemStatusResponse | null;
+  process:  ProcessStatusResponse | null;
+  daytrade: DaytradeStateResponse | null;
   fetchedAt: number;
   hadError: boolean;
 }
 
 export const EMPTY_SNAPSHOT: OverviewSnapshot = {
-  summary: null,
-  balance: null,
-  orders:  null,
-  system:  null,
-  process: null,
+  summary:  null,
+  balance:  null,
+  orders:   null,
+  system:   null,
+  process:  null,
+  daytrade: null,
   fetchedAt: 0,
   hadError: false,
 };
@@ -128,6 +131,54 @@ export interface TraderHealthView {
   tone: Tone;
   pid: number | null;
   heartbeatAgeSec: number | null;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 단타 게이트 상태.
+// ──────────────────────────────────────────────────────────────────
+
+export interface DaytradeGateView {
+  state: string;
+  stateLabel: string;
+  tone: Tone;
+  todayEntries: number;
+  maxDaily: number;
+  openTicker: string | null;
+  consecutiveLosses: number;
+  lossHaltThreshold: number;
+  entryWindow: string;
+  forceCloseTime: string;
+  halted: boolean;
+  snapshotMissing: boolean;
+}
+
+export function deriveDaytradeGate(snap: OverviewSnapshot): DaytradeGateView {
+  const dt = snap.daytrade?.daytrade ?? null;
+  const missing = Boolean(snap.daytrade?.snapshot_missing) || dt == null;
+  const state = String(dt?.state ?? 'idle').toLowerCase();
+  const halted = Boolean(dt?.halted);
+  const tony: Record<string, Tone> = {
+    idle:     'muted',
+    allowed:  'ok',
+    holding:  'ok',
+    no_capacity_today: 'warn',
+    loss_halt: 'fail',
+    halted:   'fail',
+  };
+  return {
+    state,
+    stateLabel: String(dt?.state_label ?? '대기'),
+    tone: halted ? 'fail' : (tony[state] ?? 'muted'),
+    todayEntries: Number(dt?.today_entries ?? 0) || 0,
+    maxDaily:     Number(dt?.max_daily_entries ?? 2) || 2,
+    openTicker:   (dt?.open_ticker ?? null),
+    consecutiveLosses: Number(dt?.consecutive_losses ?? 0) || 0,
+    lossHaltThreshold: Number(dt?.loss_halt_threshold ?? 2) || 2,
+    entryWindow:    String(dt?.entry_window ?? '09:40~11:00'),
+    forceCloseTime: String(dt?.force_close_time ?? '15:10'),
+    halted,
+    snapshotMissing: missing,
+  };
 }
 
 export function deriveTraderHealth(snap: OverviewSnapshot): TraderHealthView {

@@ -67,6 +67,41 @@ export interface SystemStatusResponse extends ApiOkEnvelope {
   updated_at?: IsoDateString | null;
 }
 
+// ──────────────────────────────────────────────────────────────────
+// daytradeState — runtime_state.json 기반 단타 게이트 / 시간청산 상태.
+// ──────────────────────────────────────────────────────────────────
+
+export type DaytradeState =
+  | 'idle' | 'allowed' | 'holding' | 'no_capacity_today'
+  | 'loss_halt' | 'halted' | (string & {});
+
+export interface DaytradeSection {
+  state?: DaytradeState;
+  state_label?: string | null;
+  today_entries?: number | null;
+  max_daily_entries?: number | null;
+  open_ticker?: string | null;
+  consecutive_losses?: number | null;
+  loss_halt_threshold?: number | null;
+  entry_window?: string | null;
+  force_close_time?: string | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  halted?: boolean | null;
+  trade_date?: string | null;
+  traded_tickers?: string[];
+  open_entry_time?: IsoDateString | null;
+  time_stop_hard_min?: number | null;
+  time_stop_soft_min?: number | null;
+  time_stop_soft_r?: number | null;
+}
+
+export interface DaytradeStateResponse extends ApiOkEnvelope {
+  updated_at?: IsoDateString | null;
+  daytrade?: DaytradeSection;
+  snapshot_missing?: boolean | null;
+}
+
 export type RiskLevel = 'info' | 'warn' | 'error' | 'critical' | (string & {});
 export type RiskCategory =
   | 'order_error' | 'buy_blocked' | 'cancel_failed'
