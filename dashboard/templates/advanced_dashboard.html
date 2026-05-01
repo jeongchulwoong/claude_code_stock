@@ -430,7 +430,26 @@ tbody tr:last-child td{border-bottom:0}
 
 {% if is_admin %}
 {% if frontend_react_enabled %}
-<!-- F3 — Admin Overview React island mount root. flag ON 일 때만 출력. mount 실패 시 아래 Jinja UI 가 fallback. -->
+<!-- F7 — AdminShell single mount root. mount 성공 시 아래 Jinja overview/tab UI 는 CSS 로 숨김. -->
+<div
+  id="admin-shell-react-root"
+  class="react-island react-island--admin-shell"
+  data-phase="F7"
+  data-island="admin-shell"
+  data-fallback="jinja-advanced"></div>
+<style>
+/* AdminShell mount 시 기존 Jinja header/tab/panel 숨김 (이중 표시 방지).
+   :has() 미지원 브라우저는 fallback (둘 다 표시) — :has() 지원: Chrome 105+, Safari 15.4+, Firefox 121+. */
+body:has(#admin-shell-react-root > [data-app="admin"]) .hdr,
+body:has(#admin-shell-react-root > [data-app="admin"]) .tab-bar,
+body:has(#admin-shell-react-root > [data-app="admin"]) [id^="tab-"] {
+  display: none !important;
+}
+body:has(#admin-shell-react-root > [data-app="admin"]) {
+  background: var(--qd-bg, #F7F8FA);
+}
+</style>
+<!-- F3 — Admin Overview React island mount root (legacy fallback). -->
 <section
   id="admin-overview-react-root"
   class="react-island react-island--admin-overview"

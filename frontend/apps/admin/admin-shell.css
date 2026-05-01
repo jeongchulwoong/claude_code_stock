@@ -1,0 +1,229 @@
+/* Phase F7 — AdminShell layout. 운영 도구다운 절제된 색상. */
+
+.qd-shell {
+  min-height: 100vh;
+  background: var(--qd-bg);
+  color: var(--qd-text);
+  display: flex;
+  flex-direction: column;
+}
+
+.qd-shell-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--qd-surface);
+  border-bottom: 1px solid var(--qd-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-wrap: wrap;
+}
+
+.qd-shell-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.qd-shell-mark {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #2563eb 100%);
+  color: #fff;
+  align-self: center;
+}
+
+.qd-shell-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -.2px;
+  color: var(--qd-text);
+}
+
+.qd-shell-sub {
+  font-size: 11px;
+  color: var(--qd-text-3);
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+
+.qd-shell-tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.qd-shell-tab {
+  background: transparent;
+  border: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--qd-text-2);
+  cursor: pointer;
+  border-radius: var(--qd-radius);
+  position: relative;
+  transition: color var(--qd-dur-fast) var(--qd-ease),
+              background var(--qd-dur-fast) var(--qd-ease);
+}
+
+.qd-shell-tab:hover {
+  background: var(--qd-hover);
+  color: var(--qd-text);
+}
+
+.qd-shell-tab.is-active {
+  color: var(--qd-blue);
+  background: var(--qd-blue-bg);
+}
+
+.qd-shell-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -10px;
+  height: 2px;
+  background: var(--qd-blue);
+  border-radius: 1px;
+  animation: qd-fade-in var(--qd-dur-fast) var(--qd-ease) both;
+}
+
+.qd-shell-tab:focus-visible {
+  outline: 2px solid var(--qd-blue);
+  outline-offset: 2px;
+}
+
+.qd-shell-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.qd-shell-role {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  padding: 3px 10px;
+  border-radius: var(--qd-radius-pill);
+  background: var(--qd-blue-bg);
+  color: var(--qd-blue);
+  text-transform: uppercase;
+}
+.qd-shell-role[data-role="client"] {
+  background: var(--qd-amber-bg);
+  color: var(--qd-amber);
+}
+
+.qd-shell-logout {
+  background: var(--qd-surface);
+  border: 1px solid var(--qd-border);
+  color: var(--qd-text-2);
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: var(--qd-radius);
+  cursor: pointer;
+  transition: background var(--qd-dur-fast) var(--qd-ease),
+              border-color var(--qd-dur-fast) var(--qd-ease),
+              color var(--qd-dur-fast) var(--qd-ease);
+}
+
+.qd-shell-logout:hover {
+  background: var(--qd-red-bg);
+  border-color: rgba(220,38,38,.30);
+  color: var(--qd-red);
+}
+
+.qd-shell-panel {
+  flex: 1;
+  padding: 20px;
+  max-width: 1500px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (max-width: 720px) {
+  .qd-shell-bar { padding: 8px 12px; }
+  .qd-shell-tabs { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+  .qd-shell-tab { white-space: nowrap; }
+  .qd-shell-panel { padding: 12px; }
+}
+
+/* Generic tab placeholder for not-yet-built tabs. */
+.qd-tab-stub {
+  background: var(--qd-surface);
+  border: 1px dashed var(--qd-border);
+  border-radius: var(--qd-radius-lg);
+  padding: 32px;
+  text-align: center;
+  color: var(--qd-text-3);
+}
+.qd-tab-stub h2 {
+  font-size: var(--qd-fs-lg);
+  margin: 0 0 8px 0;
+  color: var(--qd-text);
+}
+.qd-tab-stub p { margin: 4px 0; font-size: var(--qd-fs-sm); }
+
+/* Common tab table styles (Orders / Screener). */
+.qd-tab-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--qd-border);
+}
+.qd-tab-h h2 {
+  font-size: var(--qd-fs-lg);
+  font-weight: 700;
+  letter-spacing: -.2px;
+  margin: 0;
+}
+.qd-tab-h .qd-tab-meta {
+  font-size: var(--qd-fs-xs);
+  color: var(--qd-text-3);
+}
+.qd-tab-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--qd-fs-sm);
+}
+.qd-tab-table thead th {
+  background: var(--qd-surface);
+  text-align: left;
+  font-size: var(--qd-fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--qd-text-3);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--qd-border);
+  position: sticky;
+  top: 50px;
+  z-index: 5;
+}
+.qd-tab-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--qd-border);
+  color: var(--qd-text);
+}
+.qd-tab-table tbody tr {
+  transition: background var(--qd-dur-fast) var(--qd-ease);
+}
+.qd-tab-table tbody tr:hover { background: var(--qd-hover); }
+.qd-tab-table .qd-tab-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--qd-text-3);
+}

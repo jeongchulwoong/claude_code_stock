@@ -25,7 +25,8 @@
 param(
     [switch]$NoBrowser,
     [switch]$SkipTrader,
-    [switch]$ShowWindows
+    [switch]$ShowWindows,
+    [switch]$NoBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -212,8 +213,37 @@ try {
     if ($reactBuilt) {
         Write-Line "[OK] frontend dist : found ($manifest)"
     } else {
-        Write-Line "[WARN] frontend dist : missing -- React UI inactive (Jinja fallback only)"
-        Write-Line "         Build: cd frontend ; npm install ; npm run build"
+        if ($NoBuild) {
+            Write-Line "[WARN] frontend dist : missing -- React UI inactive (Jinja fallback only)"
+            Write-Line "         Run: cd frontend ; npm install ; npm run build"
+        } else {
+            Write-Line "[INFO] frontend dist : missing -- attempting one-time build (cd frontend ; npm run build)"
+            $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+            if (-not $npmCmd) {
+                Write-Line "[WARN] npm not on PATH -- skip auto-build. React UI inactive."
+            } else {
+                $frontendDir = Join-Path $Root "frontend"
+                $nodeModules = Join-Path $frontendDir "node_modules"
+                if (-not (Test-Path -LiteralPath $nodeModules)) {
+                    Write-Line "[BUILD] npm install (one-time)"
+                    & $npmCmd.Source --prefix $frontendDir install --silent 2>&1 |
+                        Where-Object { $_ -match '\S' } |
+                        Select-Object -First 5 |
+                        ForEach-Object { Write-Line "        $_" }
+                }
+                Write-Line "[BUILD] npm run build (one-time)"
+                & $npmCmd.Source --prefix $frontendDir run build 2>&1 |
+                    Where-Object { $_ -match '\S' } |
+                    Select-Object -Last 12 |
+                    ForEach-Object { Write-Line "        $_" }
+                $reactBuilt = Test-Path -LiteralPath $manifest
+                if ($reactBuilt) {
+                    Write-Line "[OK] frontend dist : built"
+                } else {
+                    Write-Line "[WARN] frontend build did not produce manifest -- React UI inactive."
+                }
+            }
+        }
     }
     if ($reactFlag) {
         Write-Line "[OK] FRONTEND_REACT_ENABLED=1 -- admin React island will mount"

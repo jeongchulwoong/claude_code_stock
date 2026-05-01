@@ -16,29 +16,33 @@ ROOT = Path(__file__).resolve().parent.parent
 START_ALL_PS1 = ROOT / "scripts" / "start_all.ps1"
 
 
-def test_start_all_does_not_auto_build_frontend() -> None:
-    """launcher 는 frontend 를 *실행 단계에서* 자동 빌드하지 않는다.
+def test_start_all_auto_builds_only_when_manifest_missing() -> None:
+    """launcher 는 manifest 부재 시에만 *one-time* 빌드. 매번 빌드 금지.
 
-    상태 표시용으로 'npm run build' 같은 문자열을 *안내 메시지로* 출력하는 것은 허용.
-    하지만 PS 가 npm 을 *호출* 하는 패턴 (Start-Process npm / & $npm / Invoke-Expression npm)
-    은 금지 — 빌드는 운영자가 명시적으로 실행해야 하는 별도 단계.
+    허용:
+      - manifest 부재 + npm 발견 + -NoBuild 플래그 미지정 → npm run build 1회.
+    금지:
+      - 백그라운드로 npm 영구 실행 (Start-ManagedProcess 와 함께).
+      - 매 launcher 시작마다 무조건 빌드 (manifest 존재해도 빌드).
     """
     src = START_ALL_PS1.read_text(encoding="utf-8")
-    forbidden_invocations = (
-        "Ensure-FrontendBuild",        # 옛 auto-build helper 함수.
-        "Find-Npm",                     # npm 위치 탐색기.
-        "Start-Process -FilePath \"npm",  # npm exec.
-        "Start-Process \"npm",
-        "Start-Process npm",
-        "Start-ManagedProcess -Name \"frontend",  # 백그라운드로 npm 실행.
-        "Invoke-Expression \"npm",
-        "& \"npm",                       # call operator.
-        "& 'npm",
-        "& $Npm",
-        "Invoke-Expression \"npx",
+
+    # 백그라운드 실행 금지 — auto-build 는 foreground 한 번만.
+    forbidden_bg = (
+        "Start-ManagedProcess -Name \"frontend",
+        "Start-ManagedProcess -FilePath $npmCmd",
+        "Start-Process -FilePath $npmCmd",
+        "-LogName \"frontend",
     )
-    for token in forbidden_invocations:
-        assert token not in src, f"start_all.ps1 must not invoke npm/npx: {token!r}"
+    for token in forbidden_bg:
+        assert token not in src, f"npm must not run as background managed process: {token!r}"
+
+    # 무조건 빌드 (manifest 존재해도) 금지 — manifest 체크 *분기 안* 에서만 build.
+    # if ($reactBuilt) { ... [OK] ... } else { ... build ... } 패턴을 강제.
+    assert "Test-Path -LiteralPath $manifest" in src, "manifest 존재 체크 필요"
+    assert "if ($reactBuilt)" in src, "manifest 존재 분기 필요"
+    # NoBuild 옵션으로 자동 빌드 비활성 가능해야 함.
+    assert "$NoBuild" in src, "operator 가 -NoBuild 로 자동 빌드 끌 수 있어야 함"
 
 
 def test_start_all_reports_react_ui_status() -> None:
