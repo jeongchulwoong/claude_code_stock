@@ -429,6 +429,28 @@ tbody tr:last-child td{border-bottom:0}
 </script>
 
 {% if is_admin %}
+{% if frontend_react_enabled %}
+<!-- F3 — Admin Overview React island mount root. flag ON 일 때만 출력. mount 실패 시 아래 Jinja UI 가 fallback. -->
+<section
+  id="admin-overview-react-root"
+  class="react-island react-island--admin-overview"
+  data-phase="F3"
+  data-island="admin-overview"
+  data-fallback="jinja-advanced"
+  aria-label="Admin Overview (React island)"></section>
+<!-- F4 — Risk Events React island mount root. -->
+<div
+  id="admin-risk-events-react-root"
+  class="react-island react-island--risk-events"
+  data-phase="F4"
+  data-fallback="jinja-risk-events"></div>
+<!-- F4 — Realtime React island mount root. -->
+<div
+  id="admin-realtime-react-root"
+  class="react-island react-island--realtime"
+  data-phase="F4"
+  data-fallback="jinja-realtime"></div>
+{% endif %}
 <!-- ① 대시보드 탭 (admin only) -->
 <div id="tab-overview" class="panel active">
   <!-- Hero: 오늘의 손익 (제일 중요한 거 가장 크게) -->
@@ -1775,5 +1797,13 @@ if (window.IS_ADMIN) {
   }, CLIENT_POLL_MS);
 }
 </script>
+{% if is_admin and frontend_react_enabled and frontend_react_assets %}
+{% for css in frontend_react_assets.css %}
+<link rel="stylesheet" href="{{ css }}">
+{% endfor %}
+{% for js in frontend_react_assets.js %}
+<script type="module" src="{{ js }}"></script>
+{% endfor %}
+{% endif %}
 </body>
 </html>

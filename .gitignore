@@ -16,6 +16,8 @@ logs/
 
 # Python
 __pycache__/
+.pytest_cache/
+.pytest_tmp/
 *.py[cod]
 *.pyo
 *.pyd
@@ -44,3 +46,9 @@ Thumbs.db
 
 # 키움 API 캐시
 *.log
+
+# Frontend build/install artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
