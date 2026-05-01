@@ -15,6 +15,9 @@ import OrdersTab from './features/orders/OrdersTab';
 import DaytradeTab from './features/daytrade/DaytradeTab';
 import ScreenerTab from './features/screener/ScreenerTab';
 import SettingsTab from './features/settings/SettingsTab';
+import WatchlistTab from './features/watchlist/WatchlistTab';
+import StrategiesTab from './features/strategies/StrategiesTab';
+import ChartTab from './features/chart/ChartTab';
 import { logout } from '@shared/auth/authClient';
 import { loadAuth } from '@shared/auth/tokenStorage';
 import './admin-shell.css';
@@ -22,7 +25,7 @@ import './admin-shell.css';
 export type AdminTabId =
   | 'overview' | 'portfolio' | 'daytrade'
   | 'realtime' | 'risk' | 'orders'
-  | 'screener' | 'settings';
+  | 'screener' | 'watchlist' | 'strategies' | 'chart' | 'settings';
 
 interface TabDef {
   id: AdminTabId;
@@ -31,14 +34,17 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: 'overview',  label: 'Overview',  Component: () => <AdminOverviewIsland /> },
-  { id: 'portfolio', label: 'Portfolio', Component: () => <AdminPortfolioIsland /> },
-  { id: 'daytrade',  label: '분단타',    Component: DaytradeTab },
-  { id: 'realtime',  label: 'Realtime',  Component: () => <AdminRealtimeIsland /> },
-  { id: 'risk',      label: 'Risk',      Component: () => <AdminRiskEventsIsland /> },
-  { id: 'orders',    label: 'Orders',    Component: OrdersTab },
-  { id: 'screener',  label: 'Screener',  Component: ScreenerTab },
-  { id: 'settings',  label: 'Settings',  Component: SettingsTab },
+  { id: 'overview',   label: 'Overview',   Component: () => <AdminOverviewIsland /> },
+  { id: 'portfolio',  label: 'Portfolio',  Component: () => <AdminPortfolioIsland /> },
+  { id: 'daytrade',   label: '분단타',     Component: DaytradeTab },
+  { id: 'realtime',   label: 'Realtime',   Component: () => <AdminRealtimeIsland /> },
+  { id: 'risk',       label: 'Risk',       Component: () => <AdminRiskEventsIsland /> },
+  { id: 'orders',     label: 'Orders',     Component: OrdersTab },
+  { id: 'screener',   label: 'Screener',   Component: ScreenerTab },
+  { id: 'watchlist',  label: 'Watchlist',  Component: WatchlistTab },
+  { id: 'strategies', label: 'Strategies', Component: StrategiesTab },
+  { id: 'chart',      label: 'Chart',      Component: ChartTab },
+  { id: 'settings',   label: 'Settings',   Component: SettingsTab },
 ];
 
 const TAB_IDS = new Set<AdminTabId>(TABS.map((t) => t.id));

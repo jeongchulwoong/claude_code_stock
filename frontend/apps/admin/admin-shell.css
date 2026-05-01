@@ -227,3 +227,14 @@
   padding: 24px;
   color: var(--qd-text-3);
 }
+
+/* Chart tab — SVG 일별 손익 line. */
+.qd-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.qd-chart-svg path,
+.qd-chart-svg circle {
+  transition: opacity var(--qd-dur-base) var(--qd-ease);
+}
